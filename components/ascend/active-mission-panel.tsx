@@ -15,6 +15,7 @@ type ActiveMissionPanelProps = {
   selectedActivityType: ActivityTypeId;
   setSelectedActivityType: (activityTypeId: ActivityTypeId) => void;
   timerRunning: boolean;
+  tree: SkillNode[];
   xpByNode: Record<string, number>;
 };
 
@@ -24,6 +25,7 @@ export function ActiveMissionPanel({
   selectedActivityType,
   setSelectedActivityType,
   timerRunning,
+  tree,
   xpByNode,
 }: ActiveMissionPanelProps) {
   const charge = getNodeCharge(activeMission, xpByNode);
@@ -54,7 +56,7 @@ export function ActiveMissionPanel({
         <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
           <div className="flex items-center justify-between text-xs uppercase tracking-[0.24em] text-slate-400">
             <span>Visible progress</span>
-            <span>{getVisibleProgressLabel(activeMission, xpByNode)}</span>
+            <span>{getVisibleProgressLabel(activeMission, tree, xpByNode)}</span>
           </div>
           <div className="mt-3 flex gap-2">
             {Array.from({ length: 5 }).map((_, index) => (

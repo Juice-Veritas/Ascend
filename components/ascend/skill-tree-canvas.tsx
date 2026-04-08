@@ -19,6 +19,16 @@ export function SkillTreeCanvas({
   tree,
   xpByNode,
 }: SkillTreeCanvasProps) {
+  const branches = Array.from(new Set(tree.filter((node) => node.kind !== "capstone").map((node) => node.branch)));
+
+  if (tree.length === 0) {
+    return (
+      <div className="flex min-h-[640px] items-center justify-center rounded-[28px] border border-dashed border-white/15 bg-[radial-gradient(circle_at_top,rgba(37,244,238,0.08),transparent_30%),linear-gradient(180deg,rgba(11,15,28,0.96),rgba(5,6,14,0.96))] px-6 text-center text-slate-400">
+        Add a capstone or supporting node to begin shaping this progression map.
+      </div>
+    );
+  }
+
   return (
     <div className="relative min-h-[640px] overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(37,244,238,0.08),transparent_30%),linear-gradient(180deg,rgba(11,15,28,0.96),rgba(5,6,14,0.96))]">
       <svg
@@ -34,7 +44,7 @@ export function SkillTreeCanvas({
               return [];
             }
 
-            const requirementState = getNodeState(requirement, xpByNode);
+            const requirementState = getNodeState(requirement, tree, xpByNode);
             const unlocked = requirementState === "COMPLETED";
 
             return (
@@ -54,7 +64,7 @@ export function SkillTreeCanvas({
       </svg>
 
       {tree.map((node) => {
-        const state = getNodeState(node, xpByNode);
+        const state = getNodeState(node, tree, xpByNode);
         const charge = getNodeCharge(node, xpByNode);
         const isActive = node.id === activeMissionId;
 
@@ -81,7 +91,7 @@ export function SkillTreeCanvas({
               }
               transition={{ duration: 2, repeat: Infinity }}
               className={cn(
-                "flex min-w-[130px] max-w-[150px] flex-col gap-2 rounded-[24px] border px-4 py-3 backdrop-blur",
+                "flex min-w-[132px] max-w-[154px] flex-col gap-2 rounded-[24px] border px-4 py-3 backdrop-blur",
                 state === "LOCKED" &&
                   "border-slate-700/70 bg-slate-900/75 text-slate-500",
                 state === "AVAILABLE" &&
@@ -90,7 +100,8 @@ export function SkillTreeCanvas({
                   "border-cyan-300/45 bg-cyan-400/8 text-white",
                 state === "COMPLETED" &&
                   "border-fuchsia-300/45 bg-fuchsia-400/10 text-white",
-                isActive && "ring-1 ring-cyan-200/50"
+                isActive && "ring-1 ring-cyan-200/50",
+                node.kind === "capstone" && "min-w-[148px] border-fuchsia-300/35"
               )}
             >
               <div className="flex items-center justify-between gap-3">
@@ -119,9 +130,7 @@ export function SkillTreeCanvas({
                     className={cn(
                       "h-1.5 flex-1 rounded-full bg-white/10",
                       index < Math.max(1, Math.ceil(charge * 4)) &&
-                        (state === "COMPLETED"
-                          ? "bg-fuchsia-300"
-                          : "bg-cyan-300")
+                        (state === "COMPLETED" ? "bg-fuchsia-300" : "bg-cyan-300")
                     )}
                   />
                 ))}
@@ -130,6 +139,17 @@ export function SkillTreeCanvas({
           </motion.button>
         );
       })}
+
+      <div className="pointer-events-none absolute inset-x-4 bottom-4 flex flex-wrap justify-center gap-2">
+        {branches.map((branch) => (
+          <div
+            key={branch}
+            className="rounded-full border border-white/10 bg-slate-950/80 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-slate-400"
+          >
+            {branch}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

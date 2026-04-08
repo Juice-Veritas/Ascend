@@ -21,7 +21,7 @@ export const defaultAscendState: PersistedAscendState = {
   xpByNode: {
     "physical-foundation": 70,
     handstand: 28,
-    mobility: 18,
+    "mobility-base": 18,
   },
   sessionFeed: [],
 };

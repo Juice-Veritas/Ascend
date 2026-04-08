@@ -5,8 +5,12 @@ create table if not exists public.user_rpg_state (
   selected_activity_type text not null default 'focused',
   xp_by_node jsonb not null default '{}'::jsonb,
   session_feed jsonb not null default '[]'::jsonb,
+  tree_catalog jsonb,
   updated_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.user_rpg_state
+add column if not exists tree_catalog jsonb;
 
 create or replace function public.set_updated_at()
 returns trigger

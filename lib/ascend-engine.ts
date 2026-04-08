@@ -1,6 +1,5 @@
 import {
   ACTIVITY_TYPES,
-  ATHLETICS_TREE,
   type ActivityTypeId,
   type NodeState,
   type PathId,
@@ -8,12 +7,13 @@ import {
   type SkillNode,
 } from "@/lib/ascend-data";
 
-export function getNodeById(nodeId: string) {
-  return ATHLETICS_TREE.find((node) => node.id === nodeId);
+export function getNodeById(nodes: SkillNode[], nodeId: string) {
+  return nodes.find((node) => node.id === nodeId);
 }
 
 export function getNodeState(
   node: SkillNode,
+  nodes: SkillNode[],
   xpByNode: Record<string, number>
 ): NodeState {
   const xp = xpByNode[node.id] ?? 0;
@@ -28,11 +28,10 @@ export function getNodeState(
 
   if (
     node.requirements.length === 0 ||
-    node.requirements.every(
-      (requirementId) =>
-        (xpByNode[requirementId] ?? 0) >=
-        (getNodeById(requirementId)?.targetXp ?? Number.POSITIVE_INFINITY)
-    )
+    node.requirements.every((requirementId) => {
+      const requirement = getNodeById(nodes, requirementId);
+      return (xpByNode[requirementId] ?? 0) >= (requirement?.targetXp ?? Number.POSITIVE_INFINITY);
+    })
   ) {
     return "AVAILABLE";
   }
@@ -50,10 +49,11 @@ export function getNodeCharge(
 
 export function getVisibleProgressLabel(
   node: SkillNode,
+  nodes: SkillNode[],
   xpByNode: Record<string, number>
 ) {
   const charge = getNodeCharge(node, xpByNode);
-  const state = getNodeState(node, xpByNode);
+  const state = getNodeState(node, nodes, xpByNode);
 
   if (state === "LOCKED") {
     return "Offline";
@@ -89,11 +89,13 @@ export function logSessionProgress({
   minutes,
   activityTypeId,
   previousXpByNode,
+  note,
 }: {
   node: SkillNode;
   minutes: number;
   activityTypeId: ActivityTypeId;
   previousXpByNode: Record<string, number>;
+  note?: string;
 }): {
   session: SessionLog;
   xpByNode: Record<string, number>;
@@ -108,8 +110,6 @@ export function logSessionProgress({
     [node.id]: nextXp,
   };
 
-  const state = getNodeState(node, xpByNode);
-
   return {
     xpByNode,
     session: {
@@ -120,8 +120,9 @@ export function logSessionProgress({
       activityTypeId,
       activityLabel: activityType.label,
       grantedXp,
+      note,
       feedback:
-        state === "COMPLETED"
+        nextXp >= node.targetXp
           ? "Milestone sealed. The node now radiates at full intensity."
           : "Progress registered. Node glow has increased.",
     },
@@ -130,36 +131,37 @@ export function logSessionProgress({
 
 export function derivePathSignal(
   pathId: PathId,
+  nodes: SkillNode[],
   xpByNode: Record<string, number>
 ) {
-  const nodes = ATHLETICS_TREE.filter((node) => node.pathId === pathId);
+  const pathNodes = nodes.filter((node) => node.pathId === pathId);
 
-  if (nodes.length === 0) {
+  if (pathNodes.length === 0) {
     return {
-      completionText: "Signal dormant",
+      completionText: "Blueprint forming",
       signalBars: 1,
       glowStrength: 0.12,
       activeNodes: 0,
     };
   }
 
-  const completedNodes = nodes.filter(
-    (node) => getNodeState(node, xpByNode) === "COMPLETED"
+  const completedNodes = pathNodes.filter(
+    (node) => getNodeState(node, pathNodes, xpByNode) === "COMPLETED"
   ).length;
-  const activeNodes = nodes.filter(
+  const activeNodes = pathNodes.filter(
     (node) => (xpByNode[node.id] ?? 0) > 0
   ).length;
   const averageCharge =
-    nodes.reduce((sum, node) => sum + getNodeCharge(node, xpByNode), 0) /
-    nodes.length;
+    pathNodes.reduce((sum, node) => sum + getNodeCharge(node, xpByNode), 0) /
+    pathNodes.length;
 
   return {
     completionText:
       completedNodes > 0
-        ? `${completedNodes}/${nodes.length} milestones stabilized`
+        ? `${completedNodes}/${pathNodes.length} milestones stabilized`
         : activeNodes > 0
           ? "Progress signal rising"
-          : "Signal dormant",
+          : "Blueprint forming",
     signalBars: Math.max(1, Math.ceil(averageCharge * 4)),
     glowStrength: averageCharge,
     activeNodes,

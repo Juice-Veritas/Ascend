@@ -7,13 +7,20 @@ import { type Session } from "@supabase/supabase-js";
 import { CommandDeck } from "@/components/ascend/command-deck";
 import { SkillTreeScreen } from "@/components/ascend/skill-tree-screen";
 import {
-  ATHLETICS_TREE,
-  PATHS,
+  DEFAULT_CATALOG,
   type ActivityTypeId,
   type PathDefinition,
   type PathId,
   type SessionLog,
+  type SkillNode,
+  type TreeCatalog,
 } from "@/lib/ascend-data";
+import {
+  createGeneratedTree,
+  createPathDefinition,
+  readTreeCatalog,
+  writeTreeCatalog,
+} from "@/lib/ascend-catalog-storage";
 import {
   fetchSupabaseSession,
   loadRemoteAscendState,
@@ -41,42 +48,37 @@ type SessionFeedback = SessionLog & { visibleLabel: string };
 
 export function AscendApp() {
   const [screen, setScreen] = useState<Screen>("paths");
-  const [selectedPathId, setSelectedPathId] =
-    useState<PathId>(defaultAscendState.selectedPathId);
-  const [activeMissionId, setActiveMissionId] =
-    useState(defaultAscendState.activeMissionId);
+  const [catalog, setCatalog] = useState<TreeCatalog>(DEFAULT_CATALOG);
+  const [selectedPathId, setSelectedPathId] = useState<PathId>(defaultAscendState.selectedPathId);
+  const [activeMissionId, setActiveMissionId] = useState(defaultAscendState.activeMissionId);
   const [timerRunning, setTimerRunning] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [xpByNode, setXpByNode] = useState<Record<string, number>>(
-    defaultAscendState.xpByNode
-  );
-  const [sessionFeed, setSessionFeed] = useState<SessionLog[]>(
-    defaultAscendState.sessionFeed
-  );
+  const [xpByNode, setXpByNode] = useState<Record<string, number>>(defaultAscendState.xpByNode);
+  const [sessionFeed, setSessionFeed] = useState<SessionLog[]>(defaultAscendState.sessionFeed);
   const [selectedActivityType, setSelectedActivityType] =
     useState<ActivityTypeId>(defaultAscendState.selectedActivityType);
-  const [sessionFeedback, setSessionFeedback] =
-    useState<SessionFeedback | null>(null);
+  const [sessionFeedback, setSessionFeedback] = useState<SessionFeedback | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authMessage, setAuthMessage] = useState<string | null>(null);
-  const [authStatus, setAuthStatus] = useState<
-    "offline" | "local" | "syncing" | "synced"
-  >(hasSupabaseEnv ? "local" : "offline");
+  const [authStatus, setAuthStatus] = useState<"offline" | "local" | "syncing" | "synced">(
+    hasSupabaseEnv ? "local" : "offline"
+  );
   const [session, setSession] = useState<Session | null>(null);
   const [hasHydratedState, setHasHydratedState] = useState(false);
+  const [hasResolvedRemote, setHasResolvedRemote] = useState(!hasSupabaseEnv);
 
-  const selectedPath = PATHS.find((path) => path.id === selectedPathId) ?? PATHS[0];
-  const activeMission = getNodeById(activeMissionId);
-  const activeMissionCharge = activeMission
-    ? getNodeCharge(activeMission, xpByNode)
-    : 0;
+  const tree = catalog.skillTrees[selectedPathId] ?? [];
+  const selectedPath =
+    catalog.paths.find((path) => path.id === selectedPathId) ?? catalog.paths[0] ?? DEFAULT_CATALOG.paths[0];
+  const activeMission = getNodeById(tree, activeMissionId);
+  const activeMissionCharge = activeMission ? getNodeCharge(activeMission, xpByNode) : 0;
 
   const pathSignals = useMemo(
     () =>
       Object.fromEntries(
-        PATHS.map((path) => [path.id, derivePathSignal(path.id, xpByNode)])
+        catalog.paths.map((path) => [path.id, derivePathSignal(path.id, catalog.skillTrees[path.id] ?? [], xpByNode)])
       ) as Record<PathId, ReturnType<typeof derivePathSignal>>,
-    [xpByNode]
+    [catalog, xpByNode]
   );
 
   function applyPersistedState(state: PersistedAscendState) {
@@ -90,12 +92,9 @@ export function AscendApp() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const localState = readLocalAscendState();
-
-      setSelectedPathId(localState.selectedPathId);
-      setActiveMissionId(localState.activeMissionId);
-      setSelectedActivityType(localState.selectedActivityType);
-      setXpByNode(localState.xpByNode);
-      setSessionFeed(localState.sessionFeed);
+      const localCatalog = readTreeCatalog();
+      setCatalog(localCatalog);
+      applyPersistedState(localState);
       setHasHydratedState(true);
     });
 
@@ -119,10 +118,7 @@ export function AscendApp() {
       return;
     }
 
-    const timeout = window.setTimeout(() => {
-      setSessionFeedback(null);
-    }, 2600);
-
+    const timeout = window.setTimeout(() => setSessionFeedback(null), 2600);
     return () => window.clearTimeout(timeout);
   }, [sessionFeedback]);
 
@@ -141,6 +137,7 @@ export function AscendApp() {
       setSession(nextSession);
       setAuthStatus(nextSession ? "syncing" : "local");
       setAuthEmail(nextSession?.user.email ?? "");
+      setHasResolvedRemote(!nextSession);
     });
 
     const {
@@ -149,6 +146,7 @@ export function AscendApp() {
       setSession(nextSession);
       setAuthStatus(nextSession ? "syncing" : "local");
       setAuthEmail(nextSession?.user.email ?? "");
+      setHasResolvedRemote(!nextSession);
     });
 
     return () => {
@@ -166,16 +164,19 @@ export function AscendApp() {
 
     loadRemoteAscendState(session)
       .then((remoteState) => {
-        if (!active) {
+        if (!active || !remoteState) {
+          if (active) {
+            setHasResolvedRemote(true);
+          }
           return;
         }
 
-        if (remoteState) {
-          applyPersistedState(remoteState);
-          writeLocalAscendState(remoteState);
-        }
-
+        setCatalog(remoteState.catalog);
+        applyPersistedState(remoteState.state);
+        writeTreeCatalog(remoteState.catalog);
+        writeLocalAscendState(remoteState.state);
         setAuthStatus("synced");
+        setHasResolvedRemote(true);
       })
       .catch((error: unknown) => {
         if (!active) {
@@ -183,9 +184,8 @@ export function AscendApp() {
         }
 
         setAuthStatus("local");
-        setAuthMessage(
-          error instanceof Error ? error.message : "Unable to load synced state."
-        );
+        setHasResolvedRemote(true);
+        setAuthMessage(error instanceof Error ? error.message : "Unable to load synced state.");
       });
 
     return () => {
@@ -206,24 +206,27 @@ export function AscendApp() {
       sessionFeed,
     };
     writeLocalAscendState(nextState);
+    writeTreeCatalog(catalog);
 
     if (!session) {
       return;
     }
 
-    saveRemoteAscendState(session, nextState)
-      .then(() => {
-        setAuthStatus("synced");
-      })
+    if (!hasResolvedRemote) {
+      return;
+    }
+
+    saveRemoteAscendState(session, nextState, catalog)
+      .then(() => setAuthStatus("synced"))
       .catch((error: unknown) => {
         setAuthStatus("local");
-        setAuthMessage(
-          error instanceof Error ? error.message : "Unable to save synced state."
-        );
+        setAuthMessage(error instanceof Error ? error.message : "Unable to save synced state.");
       });
   }, [
     activeMissionId,
+    catalog,
     hasHydratedState,
+    hasResolvedRemote,
     selectedActivityType,
     selectedPathId,
     session,
@@ -231,14 +234,18 @@ export function AscendApp() {
     xpByNode,
   ]);
 
-  function openPath(path: PathDefinition) {
+  function selectPath(path: PathDefinition) {
     setSelectedPathId(path.id);
+    const nextTree = catalog.skillTrees[path.id] ?? [];
+    setActiveMissionId(nextTree[0]?.id ?? "");
+  }
+
+  function openSelectedPath() {
     setScreen("tree");
   }
 
   function selectMission(nodeId: string) {
     setActiveMissionId(nodeId);
-    setSelectedPathId("athletics");
   }
 
   function toggleTimer() {
@@ -254,7 +261,7 @@ export function AscendApp() {
     setElapsedSeconds(0);
   }
 
-  function registerSession(minutes: number, activityTypeId: ActivityTypeId) {
+  function registerSession(minutes: number, activityTypeId: ActivityTypeId, note?: string) {
     if (!activeMission) {
       return;
     }
@@ -264,16 +271,14 @@ export function AscendApp() {
       minutes,
       activityTypeId,
       previousXpByNode: xpByNode,
+      note,
     });
 
     setXpByNode(result.xpByNode);
     setElapsedSeconds(0);
     setTimerRunning(false);
-    setSessionFeed((current) => [result.session, ...current].slice(0, 4));
-    setSessionFeedback({
-      ...result.session,
-      visibleLabel: "Progress Registered",
-    });
+    setSessionFeed((current) => [result.session, ...current].slice(0, 6));
+    setSessionFeedback({ ...result.session, visibleLabel: "Progress Registered" });
   }
 
   async function handleSendMagicLink() {
@@ -282,9 +287,7 @@ export function AscendApp() {
       await sendMagicLink(authEmail);
       setAuthMessage("Magic link sent. Open it on any device to sync your state.");
     } catch (error: unknown) {
-      setAuthMessage(
-        error instanceof Error ? error.message : "Unable to send magic link."
-      );
+      setAuthMessage(error instanceof Error ? error.message : "Unable to send magic link.");
     }
   }
 
@@ -296,15 +299,133 @@ export function AscendApp() {
       setSession(null);
       setAuthMessage("Signed out. Local progress remains on this browser.");
     } catch (error: unknown) {
-      setAuthMessage(
-        error instanceof Error ? error.message : "Unable to sign out."
-      );
+      setAuthMessage(error instanceof Error ? error.message : "Unable to sign out.");
     }
   }
 
-  function commitTimerSession() {
+  function commitTimerSession(note?: string) {
     const roundedMinutes = Math.max(1, Math.round(elapsedSeconds / 60));
-    registerSession(roundedMinutes, selectedActivityType);
+    registerSession(roundedMinutes, selectedActivityType, note);
+  }
+
+  function handleCreatePath(name: string, capstones: string) {
+    const path = createPathDefinition(name, catalog.paths.length);
+    const capstoneList = capstones
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const generatedTree = createGeneratedTree(path.id, capstoneList);
+
+    setCatalog((current) => ({
+      paths: [...current.paths, path],
+      skillTrees: {
+        ...current.skillTrees,
+        [path.id]: generatedTree,
+      },
+    }));
+    setSelectedPathId(path.id);
+    setActiveMissionId(generatedTree[0]?.id ?? "");
+    setScreen("tree");
+  }
+
+  function handleDeletePath(pathId: string) {
+    if (pathId === "athletics") {
+      return;
+    }
+
+    setCatalog((current) => {
+      const nextTrees = { ...current.skillTrees };
+      const deletedIds = new Set((nextTrees[pathId] ?? []).map((node) => node.id));
+      delete nextTrees[pathId];
+      setXpByNode((existingXp) => Object.fromEntries(Object.entries(existingXp).filter(([nodeId]) => !deletedIds.has(nodeId))));
+      setSessionFeed((existingFeed) => existingFeed.filter((sessionItem) => !deletedIds.has(sessionItem.nodeId)));
+      return {
+        paths: current.paths.filter((path) => path.id !== pathId),
+        skillTrees: nextTrees,
+      };
+    });
+    setSelectedPathId("athletics");
+    setActiveMissionId("physical-foundation");
+    setScreen("paths");
+  }
+
+  function handleAddNode(values: {
+    name: string;
+    branch: string;
+    description: string;
+    parentId: string;
+    kind: SkillNode["kind"];
+  }) {
+    const currentTree = catalog.skillTrees[selectedPathId] ?? [];
+    const branchIndex = currentTree.filter((node) => node.branch === values.branch).length;
+    const branchNames = Array.from(
+      new Set(
+        currentTree
+          .filter((node) => node.kind !== "capstone")
+          .map((node) => node.branch)
+          .concat(values.branch)
+      )
+    );
+    const laneIndex = Math.max(0, branchNames.indexOf(values.branch));
+    const laneStep = branchNames.length <= 1 ? 0 : 58 / Math.max(1, branchNames.length - 1);
+    const branchX = Math.round(21 + laneIndex * laneStep);
+    const parent = currentTree.find((node) => node.id === values.parentId);
+    const capstoneCount = currentTree.filter((node) => node.kind === "capstone").length + (values.kind === "capstone" ? 1 : 0);
+    const capstoneStep = capstoneCount <= 1 ? 0 : 58 / Math.max(1, capstoneCount - 1);
+    const capstoneX = Math.round(
+      21 + currentTree.filter((node) => node.kind === "capstone").length * capstoneStep
+    );
+    const nextNode: SkillNode = {
+      id: `${selectedPathId}-${Date.now()}`,
+      pathId: selectedPathId,
+      name: values.name,
+      branch: values.branch,
+      description: values.description,
+      position:
+        values.kind === "capstone"
+          ? { x: capstoneX, y: 16 }
+          : values.kind === "foundation"
+            ? { x: branchX, y: 68 - Math.min(branchIndex, 1) * 8 }
+            : {
+                x: parent ? parent.position.x : branchX,
+                y: parent ? Math.max(28, parent.position.y - 16) : 46,
+              },
+      requirements: values.parentId ? [values.parentId] : [],
+      targetXp: values.kind === "capstone" ? 130 : values.kind === "foundation" ? 60 : 90,
+      kind: values.kind,
+      suggestions: [
+        `Define a repeatable practice block for ${values.name}.`,
+        `Measure one thing each week that proves ${values.name} is improving.`,
+        `Keep this node connected to the capstone it supports.`,
+      ],
+    };
+
+    setCatalog((current) => ({
+      ...current,
+      skillTrees: {
+        ...current.skillTrees,
+        [selectedPathId]: [...(current.skillTrees[selectedPathId] ?? []), nextNode],
+      },
+    }));
+    setActiveMissionId(nextNode.id);
+  }
+
+  function handleDeleteNode(nodeId: string) {
+    const nextTree = (catalog.skillTrees[selectedPathId] ?? []).filter((node) => node.id !== nodeId);
+    setCatalog((current) => ({
+      ...current,
+      skillTrees: {
+        ...current.skillTrees,
+        [selectedPathId]: nextTree,
+      },
+    }));
+    setXpByNode((existingXp) => {
+      const nextXp = { ...existingXp };
+      delete nextXp[nodeId];
+      return nextXp;
+    });
+    setSessionFeed((current) => current.filter((item) => item.nodeId !== nodeId));
+    setActiveMissionId(nextTree[0]?.id ?? "");
   }
 
   const latestSession = sessionFeed[0];
@@ -314,32 +435,23 @@ export function AscendApp() {
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(104,129,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(104,129,255,0.08)_1px,transparent_1px)] bg-[size:72px_72px] opacity-30" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(4,5,10,0.12)_52%,rgba(4,5,10,0.82)_100%)]" />
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col px-4 py-5 sm:px-6 lg:px-8">
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[1600px] flex-col px-4 py-5 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4 border-b border-white/10 pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
-            <p className="font-mono text-xs uppercase tracking-[0.45em] text-cyan-300/80">
-              Cyberpunk Life RPG
-            </p>
+            <p className="font-mono text-xs uppercase tracking-[0.45em] text-cyan-300/80">Cyberpunk Life RPG</p>
             <h1 className="max-w-3xl font-heading text-4xl uppercase tracking-[0.14em] text-white sm:text-5xl">
-              Identity-driven progression, translated into visible momentum.
+              A command deck for identity, and a tree view for deliberate progression.
             </h1>
             <p className="max-w-2xl text-sm text-slate-300 sm:text-base">
-              Choose a path, lock an active mission, and let focused sessions
-              intensify the signal without exposing raw XP.
+              Shape your own paths, anchor them around capstones, and turn real-world effort into visible momentum.
             </p>
           </div>
 
           <div className="rounded-3xl border border-cyan-400/20 bg-slate-950/60 px-4 py-3 shadow-[0_0_45px_rgba(37,244,238,0.08)] backdrop-blur">
-            <div className="text-[11px] uppercase tracking-[0.35em] text-cyan-300/80">
-              Current Signal
-            </div>
+            <div className="text-[11px] uppercase tracking-[0.35em] text-cyan-300/80">Current Signal</div>
             <div className="mt-2 flex items-end gap-3">
-              <div className="font-heading text-3xl uppercase tracking-[0.12em] text-white">
-                {selectedPath.name}
-              </div>
-              <div className="pb-1 text-sm text-slate-300">
-                {pathSignals[selectedPath.id].completionText}
-              </div>
+              <div className="font-heading text-3xl uppercase tracking-[0.12em] text-white">{selectedPath.name}</div>
+              <div className="pb-1 text-sm text-slate-300">{pathSignals[selectedPath.id]?.completionText ?? "Blueprint forming"}</div>
             </div>
           </div>
         </header>
@@ -362,18 +474,18 @@ export function AscendApp() {
                 activeMissionName={activeMission?.name ?? null}
                 latestSession={latestSession}
                 onAuthEmailChange={setAuthEmail}
-                onOpenPath={openPath}
+                onCreatePath={handleCreatePath}
+                onDeletePath={handleDeletePath}
+                onOpenPath={openSelectedPath}
                 onQuickLog={registerSession}
+                onSelectPath={selectPath}
                 onSendMagicLink={handleSendMagicLink}
                 onSignOut={handleSignOut}
-                onStartTimer={() => {
-                  if (activeMission) {
-                    setTimerRunning(true);
-                  }
-                }}
-                paths={PATHS}
+                onStartTimer={() => activeMission && setTimerRunning(true)}
+                paths={catalog.paths}
                 pathSignals={pathSignals}
                 selectedActivityType={selectedActivityType}
+                selectedPath={selectedPath}
                 setSelectedActivityType={setSelectedActivityType}
                 userEmail={session?.user.email ?? null}
                 timerRunning={timerRunning}
@@ -392,8 +504,10 @@ export function AscendApp() {
                 activeMissionId={activeMissionId}
                 elapsedSeconds={elapsedSeconds}
                 latestSession={latestSession}
+                onAddNode={handleAddNode}
                 onBack={() => setScreen("paths")}
                 onCommitTimerSession={commitTimerSession}
+                onDeleteNode={handleDeleteNode}
                 onQuickLog={registerSession}
                 onResetTimer={resetTimer}
                 onSelectMission={selectMission}
@@ -403,7 +517,7 @@ export function AscendApp() {
                 sessionFeed={sessionFeed}
                 setSelectedActivityType={setSelectedActivityType}
                 timerRunning={timerRunning}
-                tree={ATHLETICS_TREE}
+                tree={tree}
                 xpByNode={xpByNode}
               />
             </motion.section>
@@ -429,18 +543,10 @@ export function AscendApp() {
                 transition={{ duration: 0.32, ease: "easeOut" }}
                 className="pointer-events-none absolute right-4 top-24 z-20 max-w-sm rounded-[28px] border border-cyan-300/35 bg-[linear-gradient(180deg,rgba(11,17,34,0.95),rgba(7,11,21,0.92))] px-5 py-4 shadow-[0_0_45px_rgba(37,244,238,0.18)] backdrop-blur sm:right-6"
               >
-                <div className="font-mono text-[11px] uppercase tracking-[0.34em] text-cyan-300/80">
-                  {sessionFeedback.visibleLabel}
-                </div>
-                <div className="mt-2 font-heading text-2xl uppercase tracking-[0.12em] text-white">
-                  {sessionFeedback.nodeName}
-                </div>
+                <div className="font-mono text-[11px] uppercase tracking-[0.34em] text-cyan-300/80">{sessionFeedback.visibleLabel}</div>
+                <div className="mt-2 font-heading text-2xl uppercase tracking-[0.12em] text-white">{sessionFeedback.nodeName}</div>
                 <div className="mt-2 text-sm text-slate-300">
-                  {sessionFeedback.minutes}m logged as{" "}
-                  <span className="text-cyan-300">
-                    {sessionFeedback.activityLabel}
-                  </span>
-                  . {sessionFeedback.feedback}
+                  {sessionFeedback.minutes}m logged as <span className="text-cyan-300">{sessionFeedback.activityLabel}</span>. {sessionFeedback.feedback}
                 </div>
               </motion.div>
             </>
@@ -450,9 +556,7 @@ export function AscendApp() {
         <footer className="border-t border-white/10 py-4 text-xs uppercase tracking-[0.24em] text-slate-400">
           Active mission status:{" "}
           <span className="text-cyan-300">
-            {activeMission
-              ? getVisibleProgressLabel(activeMission, xpByNode)
-              : "Awaiting selection"}
+            {activeMission ? getVisibleProgressLabel(activeMission, tree, xpByNode) : "Awaiting selection"}
           </span>{" "}
           for <span className="text-white">{activeMission?.name ?? "no mission"}</span>.
         </footer>
