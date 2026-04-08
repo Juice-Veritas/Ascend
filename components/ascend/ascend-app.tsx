@@ -438,19 +438,21 @@ export function AscendApp() {
       <div className="relative mx-auto flex min-h-screen w-full max-w-[1600px] flex-col px-4 py-5 sm:px-6 lg:px-8">
         <header className="flex flex-col gap-4 border-b border-white/10 pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div className="space-y-2">
-            <p className="font-mono text-xs uppercase tracking-[0.45em] text-cyan-300/80">Cyberpunk Life RPG</p>
-            <h1 className="max-w-3xl font-heading text-4xl uppercase tracking-[0.14em] text-white sm:text-5xl">
-              A command deck for identity, and a tree view for deliberate progression.
+            <p className="font-mono text-xs uppercase tracking-[0.45em] text-cyan-300/80">Ascend</p>
+            <h1 className="max-w-3xl font-heading text-3xl uppercase tracking-[0.14em] text-white sm:text-4xl">
+              {screen === "paths" ? "Command Deck" : "Tree View"}
             </h1>
             <p className="max-w-2xl text-sm text-slate-300 sm:text-base">
-              Shape your own paths, anchor them around capstones, and turn real-world effort into visible momentum.
+              {screen === "paths"
+                ? "Choose a path, preview it, and enter when you want to work."
+                : `${selectedPath.name} laid out as a connected progression map.`}
             </p>
           </div>
 
           <div className="rounded-3xl border border-cyan-400/20 bg-slate-950/60 px-4 py-3 shadow-[0_0_45px_rgba(37,244,238,0.08)] backdrop-blur">
             <div className="text-[11px] uppercase tracking-[0.35em] text-cyan-300/80">Current Signal</div>
             <div className="mt-2 flex items-end gap-3">
-              <div className="font-heading text-3xl uppercase tracking-[0.12em] text-white">{selectedPath.name}</div>
+              <div className="font-heading text-2xl uppercase tracking-[0.12em] text-white">{selectedPath.name}</div>
               <div className="pb-1 text-sm text-slate-300">{pathSignals[selectedPath.id]?.completionText ?? "Blueprint forming"}</div>
             </div>
           </div>

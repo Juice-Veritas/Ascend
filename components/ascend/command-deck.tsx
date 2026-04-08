@@ -58,6 +58,21 @@ type CommandDeckProps = {
 
 const QUICK_LOG_MINUTES = [15, 30, 45] as const;
 
+function getOrbitPlacement(index: number, total: number) {
+  if (total <= 1) {
+    return { left: 50, top: 28 };
+  }
+
+  const angle = (-90 + (360 / total) * index) * (Math.PI / 180);
+  const radiusX = total > 6 ? 35 : 31;
+  const radiusY = total > 6 ? 24 : 22;
+
+  return {
+    left: 50 + Math.cos(angle) * radiusX,
+    top: 49 + Math.sin(angle) * radiusY,
+  };
+}
+
 export function CommandDeck({
   authEmail,
   authMessage,
@@ -99,13 +114,13 @@ export function CommandDeck({
 
             <div className="rounded-3xl border border-cyan-400/15 bg-cyan-400/8 p-4">
               <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.3em] text-cyan-200/80">
-                <span>Deck Link</span>
-                <span>{activeMissionName ? "Node bound" : "Tree draft"}</span>
+                <span>{activeMissionName ? "Mission bound" : "Draft tree"}</span>
+                <span>{Math.round(activeMissionCharge * 100)}%</span>
               </div>
               <p className="mt-3 text-sm text-slate-200">
                 {activeMissionName
-                  ? `Current mission focus is ${activeMissionName}. Open the tree to route effort through its connected nodes.`
-                  : "This tree is ready to be shaped. Add capstones or nodes, then enter the progression map."}
+                  ? `${activeMissionName} is currently bound to this tree. Enter the map when you want to train inside it.`
+                  : "This tree is ready to be shaped. Add capstones or nodes when you want to define the route."}
               </p>
               <Button
                 className="mt-4 w-full rounded-full bg-white text-slate-950 hover:bg-slate-100"
@@ -114,13 +129,6 @@ export function CommandDeck({
                 <ChevronRight className="size-4" />
                 Open progression map
               </Button>
-            </div>
-
-            <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between text-xs uppercase tracking-[0.22em] text-slate-400">
-                <span>Mission charge</span>
-                <span>{Math.round(activeMissionCharge * 100)}%</span>
-              </div>
               <div className="mt-3 h-2 rounded-full bg-white/10">
                 <div
                   className="h-2 rounded-full bg-[linear-gradient(90deg,rgba(37,244,238,0.95),rgba(254,52,187,0.82))]"
@@ -177,18 +185,20 @@ export function CommandDeck({
                 <Play className="size-4" />
                 {timerRunning ? "Timer live" : "Start timer"}
               </Button>
-              {QUICK_LOG_MINUTES.map((minutes) => (
-                <Button
-                  key={minutes}
-                  variant="outline"
-                  className="w-full rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10"
-                  onClick={() => onQuickLog(minutes, selectedActivityType)}
-                  disabled={!activeMissionName}
-                >
-                  <Zap className="size-4" />
-                  Log {minutes}m
-                </Button>
-              ))}
+              <div className="grid grid-cols-3 gap-2">
+                {QUICK_LOG_MINUTES.map((minutes) => (
+                  <Button
+                    key={minutes}
+                    variant="outline"
+                    className="rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10"
+                    onClick={() => onQuickLog(minutes, selectedActivityType)}
+                    disabled={!activeMissionName}
+                  >
+                    <Zap className="size-4" />
+                    {minutes}m
+                  </Button>
+                ))}
+              </div>
             </div>
 
             <div className="rounded-3xl border border-fuchsia-400/15 bg-fuchsia-500/8 p-4">
@@ -207,27 +217,18 @@ export function CommandDeck({
       </div>
 
       <div className="space-y-4">
-        <div>
-          <p className="font-mono text-xs uppercase tracking-[0.34em] text-cyan-300/70">
-            Command Deck
-          </p>
-          <h2 className="mt-2 font-heading text-3xl uppercase tracking-[0.14em] text-white">
-            Choose the path you want to inhabit
-          </h2>
-        </div>
-
         <Card className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,12,26,0.95),rgba(5,7,15,0.98))] p-0 shadow-[0_0_80px_rgba(37,244,238,0.08)]">
-          <CardContent className="relative min-h-[540px] overflow-hidden p-6">
+          <CardContent className="relative min-h-[540px] overflow-hidden p-5">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(37,244,238,0.08),transparent_44%)]" />
-            <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-40 w-40 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-cyan-300/20 bg-[radial-gradient(circle,rgba(37,244,238,0.18),rgba(6,10,20,0.72)_60%,rgba(6,10,20,0)_100%)] shadow-[0_0_60px_rgba(37,244,238,0.18)]">
+            <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-28 w-28 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-cyan-300/20 bg-[radial-gradient(circle,rgba(37,244,238,0.16),rgba(6,10,20,0.7)_60%,rgba(6,10,20,0)_100%)] shadow-[0_0_50px_rgba(37,244,238,0.14)]">
               <div className="space-y-1 text-center">
                 <div className="font-mono text-[10px] uppercase tracking-[0.35em] text-cyan-200/70">
-                  Synaptic Core
+                  Core
                 </div>
-                <div className="font-heading text-xl uppercase tracking-[0.14em] text-white">
+                <div className="font-heading text-lg uppercase tracking-[0.12em] text-white">
                   {selectedPath.name}
                 </div>
-                <div className="text-xs uppercase tracking-[0.2em] text-slate-400">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-slate-400">
                   {pathSignals[selectedPath.id]?.completionText ?? "Blueprint forming"}
                 </div>
               </div>
@@ -235,6 +236,7 @@ export function CommandDeck({
             {paths.map((path) => {
               const signal = pathSignals[path.id];
               const selected = path.id === selectedPath.id;
+              const placement = getOrbitPlacement(paths.findIndex((item) => item.id === path.id), paths.length);
 
               return (
                 <motion.button
@@ -243,11 +245,11 @@ export function CommandDeck({
                   onClick={() => onSelectPath(path)}
                   whileHover={{ scale: 1.04, y: -4 }}
                   className="absolute -translate-x-1/2 -translate-y-1/2 text-left"
-                  style={{ left: `${path.orbit.x}%`, top: `${path.orbit.y}%` }}
+                  style={{ left: `${placement.left}%`, top: `${placement.top}%` }}
                 >
                   <div
                     className={cn(
-                      "flex min-h-[112px] min-w-[150px] max-w-[190px] flex-col justify-between rounded-[34px] border px-4 py-4 shadow-[0_0_35px_rgba(37,244,238,0.08)] backdrop-blur",
+                      "flex min-h-[96px] min-w-[144px] max-w-[172px] flex-col justify-between rounded-[30px] border px-4 py-3 shadow-[0_0_30px_rgba(37,244,238,0.08)] backdrop-blur",
                       selected
                         ? "border-cyan-300/50 bg-slate-950/88"
                         : "border-white/10 bg-slate-950/72 hover:border-white/25"
@@ -282,8 +284,8 @@ export function CommandDeck({
               );
             })}
 
-            <div className="absolute bottom-4 left-1/2 w-3/5 -translate-x-1/2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-center text-xs uppercase tracking-[0.28em] text-slate-400">
-              Select a tree to preview it here. Open the progression map when you want to work inside it.
+            <div className="absolute bottom-4 left-1/2 w-[70%] -translate-x-1/2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-center text-[10px] uppercase tracking-[0.28em] text-slate-400">
+              Select a tree, preview it, then enter the map.
             </div>
           </CardContent>
         </Card>
@@ -296,9 +298,6 @@ export function CommandDeck({
               <p className="font-mono text-xs uppercase tracking-[0.34em] text-cyan-300/70">
                 Tree Controls
               </p>
-              <h3 className="mt-2 font-heading text-2xl uppercase tracking-[0.12em] text-white">
-                Curate your world map
-              </h3>
             </div>
 
             <AddTreeForm onCreatePath={onCreatePath} />
