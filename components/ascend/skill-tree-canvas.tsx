@@ -1,57 +1,73 @@
 "use client";
 
+import { useRef } from "react";
 import { motion } from "framer-motion";
 
 import { type SkillNode } from "@/lib/ascend-data";
-import { getNodeCharge, getNodeState } from "@/lib/ascend-engine";
+import {
+  getMilestoneProgress,
+  getNodeCharge,
+  getNodeState,
+} from "@/lib/ascend-engine";
 import { cn } from "@/lib/utils";
 
 type SkillTreeCanvasProps = {
-  activeMissionId: string;
-  onSelectMission: (nodeId: string) => void;
+  activeNodeId: string;
+  editMode: boolean;
+  onMoveNode: (nodeId: string, position: { x: number; y: number }) => void;
+  onSelectNode: (nodeId: string) => void;
   tree: SkillNode[];
-  xpByNode: Record<string, number>;
 };
 
 export function SkillTreeCanvas({
-  activeMissionId,
-  onSelectMission,
+  activeNodeId,
+  editMode,
+  onMoveNode,
+  onSelectNode,
   tree,
-  xpByNode,
 }: SkillTreeCanvasProps) {
-  const branches = Array.from(new Set(tree.filter((node) => node.kind !== "capstone").map((node) => node.branch)));
+  const branches = Array.from(
+    new Set(tree.filter((node) => node.nodeType !== "capstone").map((node) => node.branch))
+  );
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   if (tree.length === 0) {
     return (
       <div className="flex min-h-[640px] items-center justify-center rounded-[28px] border border-dashed border-white/15 bg-[radial-gradient(circle_at_top,rgba(37,244,238,0.08),transparent_30%),linear-gradient(180deg,rgba(11,15,28,0.96),rgba(5,6,14,0.96))] px-6 text-center text-slate-400">
-        Add a capstone or supporting node to begin shaping this progression map.
+        Add a path node in edit mode to begin shaping this mastery map.
       </div>
     );
   }
 
   return (
-    <div className="relative min-h-[640px] overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(37,244,238,0.08),transparent_30%),linear-gradient(180deg,rgba(11,15,28,0.96),rgba(5,6,14,0.96))]">
+    <div
+      ref={containerRef}
+      className="relative min-h-[640px] overflow-hidden rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(37,244,238,0.08),transparent_30%),linear-gradient(180deg,rgba(11,15,28,0.96),rgba(5,6,14,0.96))]"
+    >
+      {editMode ? (
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(37,244,238,0.06)_1px,transparent_1px),linear-gradient(90deg,rgba(37,244,238,0.06)_1px,transparent_1px)] bg-[size:8%_8%] opacity-50" />
+      ) : null}
       <svg
         className="pointer-events-none absolute inset-0 h-full w-full"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
       >
         {tree.flatMap((node) =>
-          node.requirements.map((requirementId) => {
-            const requirement = tree.find((item) => item.id === requirementId);
+          node.prerequisites.map((prerequisiteId) => {
+            const prerequisite = tree.find((item) => item.id === prerequisiteId);
 
-            if (!requirement) {
+            if (!prerequisite) {
               return [];
             }
 
-            const requirementState = getNodeState(requirement, tree, xpByNode);
-            const unlocked = requirementState === "COMPLETED";
+            const prerequisiteState = getNodeState(prerequisite, tree);
+            const unlocked = prerequisiteState === "mastered";
 
             return (
               <line
-                key={`${requirement.id}-${node.id}`}
-                x1={requirement.position.x}
-                y1={requirement.position.y}
+                key={`${prerequisite.id}-${node.id}`}
+                x1={prerequisite.position.x}
+                y1={prerequisite.position.y}
                 x2={node.position.x}
                 y2={node.position.y}
                 stroke={unlocked ? "rgba(37,244,238,0.65)" : "rgba(148,163,184,0.25)"}
@@ -64,9 +80,10 @@ export function SkillTreeCanvas({
       </svg>
 
       {tree.map((node) => {
-        const state = getNodeState(node, tree, xpByNode);
-        const charge = getNodeCharge(node, xpByNode);
-        const isActive = node.id === activeMissionId;
+        const state = getNodeState(node, tree);
+        const charge = getNodeCharge(node);
+        const isActive = node.id === activeNodeId;
+        const milestoneProgress = getMilestoneProgress(node);
 
         return (
           <motion.button
@@ -75,33 +92,57 @@ export function SkillTreeCanvas({
             className="absolute -translate-x-1/2 -translate-y-1/2 text-left"
             style={{ left: `${node.position.x}%`, top: `${node.position.y}%` }}
             whileHover={{ scale: 1.04 }}
-            onClick={() => onSelectMission(node.id)}
+            whileDrag={editMode ? { scale: 1.04, zIndex: 20 } : undefined}
+            drag={editMode}
+            dragMomentum={false}
+            onDragEnd={(_event, info) => {
+              if (!editMode) {
+                return;
+              }
+
+              const bounds = containerRef.current?.getBoundingClientRect();
+
+              if (!bounds) {
+                return;
+              }
+
+              const nextX = Math.max(10, Math.min(90, node.position.x + (info.offset.x / bounds.width) * 100));
+              const nextY = Math.max(14, Math.min(82, node.position.y + (info.offset.y / bounds.height) * 100));
+              onMoveNode(node.id, {
+                x: Math.round(nextX * 10) / 10,
+                y: Math.round(nextY * 10) / 10,
+              });
+            }}
+            onClick={() => onSelectNode(node.id)}
           >
             <motion.div
               animate={
                 isActive
                   ? {
                       boxShadow: [
-                        "0 0 18px rgba(37,244,238,0.25)",
-                        "0 0 36px rgba(254,52,187,0.28)",
-                        "0 0 18px rgba(37,244,238,0.25)",
+                        "0 0 18px rgba(37,244,238,0.35)",
+                        "0 0 38px rgba(254,52,187,0.24)",
+                        "0 0 18px rgba(37,244,238,0.35)",
                       ],
                     }
                   : undefined
               }
               transition={{ duration: 2, repeat: Infinity }}
               className={cn(
-                "flex min-w-[132px] max-w-[154px] flex-col gap-2 rounded-[24px] border px-4 py-3 backdrop-blur",
-                state === "LOCKED" &&
-                  "border-slate-700/70 bg-slate-900/75 text-slate-500",
-                state === "AVAILABLE" &&
-                  "border-white/15 bg-slate-900/80 text-slate-200",
-                state === "IN_PROGRESS" &&
-                  "border-cyan-300/45 bg-cyan-400/8 text-white",
-                state === "COMPLETED" &&
-                  "border-fuchsia-300/45 bg-fuchsia-400/10 text-white",
-                isActive && "ring-1 ring-cyan-200/50",
-                node.kind === "capstone" && "min-w-[148px] border-fuchsia-300/35"
+                "flex min-w-[146px] max-w-[168px] flex-col gap-2 border px-4 py-3 backdrop-blur transition-colors",
+                node.nodeType === "capstone"
+                  ? "rounded-[22px] [clip-path:polygon(12%_0,88%_0,100%_50%,88%_100%,12%_100%,0_50%)]"
+                  : "rounded-[24px]",
+                state === "locked" &&
+                  "border-slate-700/80 bg-slate-950/75 text-slate-500 shadow-[0_0_0_rgba(0,0,0,0)]",
+                state === "available" &&
+                  "border-sky-200/20 bg-slate-900/80 text-slate-100 shadow-[0_0_22px_rgba(148,163,184,0.06)]",
+                state === "in-progress" &&
+                  "border-cyan-300/55 bg-cyan-400/10 text-white shadow-[0_0_26px_rgba(37,244,238,0.16)]",
+                state === "mastered" &&
+                  "border-fuchsia-300/55 bg-fuchsia-400/12 text-white shadow-[0_0_28px_rgba(254,52,187,0.22)]",
+                isActive && "ring-1 ring-cyan-200/60",
+                node.nodeType === "capstone" && "border-fuchsia-300/35"
               )}
             >
               <div className="flex items-center justify-between gap-3">
@@ -110,17 +151,17 @@ export function SkillTreeCanvas({
                 </div>
                 <div
                   className={cn(
-                    "size-2 rounded-full",
-                    state === "LOCKED" && "bg-slate-600",
-                    state === "AVAILABLE" && "bg-slate-300",
-                    state === "IN_PROGRESS" && "bg-cyan-300",
-                    state === "COMPLETED" && "bg-fuchsia-300"
+                    "size-3 rounded-full ring-2 ring-black/20",
+                    state === "locked" && "bg-slate-600",
+                    state === "available" && "bg-sky-200",
+                    state === "in-progress" && "bg-cyan-300 shadow-[0_0_12px_rgba(37,244,238,0.65)]",
+                    state === "mastered" && "bg-fuchsia-300 shadow-[0_0_12px_rgba(254,52,187,0.7)]"
                   )}
                 />
               </div>
 
               <div className="font-heading text-base uppercase tracking-[0.08em]">
-                {node.name}
+                {node.title}
               </div>
 
               <div className="flex gap-1.5">
@@ -130,10 +171,17 @@ export function SkillTreeCanvas({
                     className={cn(
                       "h-1.5 flex-1 rounded-full bg-white/10",
                       index < Math.max(1, Math.ceil(charge * 4)) &&
-                        (state === "COMPLETED" ? "bg-fuchsia-300" : "bg-cyan-300")
+                        (state === "mastered" ? "bg-fuchsia-300" : state === "available" ? "bg-sky-200" : "bg-cyan-300")
                     )}
                   />
                 ))}
+              </div>
+
+              <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.22em] text-slate-400">
+                <span>{node.nodeType}</span>
+                <span>
+                  {milestoneProgress.completedCount}/{milestoneProgress.totalCount || 0}
+                </span>
               </div>
             </motion.div>
           </motion.button>
@@ -141,6 +189,9 @@ export function SkillTreeCanvas({
       })}
 
       <div className="pointer-events-none absolute inset-x-4 bottom-4 flex flex-wrap justify-center gap-2">
+        <div className="rounded-full border border-cyan-300/15 bg-cyan-300/8 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-200/75">
+          {editMode ? "Drag nodes to tune the layout" : "Select a node to inspect mastery"}
+        </div>
         {branches.map((branch) => (
           <div
             key={branch}

@@ -20,7 +20,6 @@ type UserStateRow = {
   session_feed: SessionLog[];
   tree_catalog: TreeCatalog | null;
   user_id: string;
-  xp_by_node: Record<string, number>;
 };
 
 export type RemoteAscendPayload = {
@@ -52,7 +51,6 @@ function serializePayload(
     selected_path_id: state.selectedPathId,
     active_mission_id: state.activeMissionId,
     selected_activity_type: state.selectedActivityType,
-    xp_by_node: state.xpByNode,
     session_feed: state.sessionFeed,
     tree_catalog: catalog,
   };
@@ -73,10 +71,6 @@ function deserializePayload(row: UserStateRow | null): RemoteAscendPayload {
       activeMissionId: row.active_mission_id ?? defaultAscendState.activeMissionId,
       selectedActivityType:
         row.selected_activity_type ?? defaultAscendState.selectedActivityType,
-      xpByNode: {
-        ...defaultAscendState.xpByNode,
-        ...(row.xp_by_node ?? {}),
-      },
       sessionFeed: row.session_feed ?? [],
     },
   };
@@ -128,7 +122,7 @@ export async function loadRemoteAscendState(session: Session | null) {
   const { data, error } = await supabase
     .from("user_rpg_state")
     .select(
-      "user_id, selected_path_id, active_mission_id, selected_activity_type, xp_by_node, session_feed, tree_catalog"
+      "user_id, selected_path_id, active_mission_id, selected_activity_type, session_feed, tree_catalog"
     )
     .eq("user_id", session.user.id)
     .maybeSingle<UserStateRow>();

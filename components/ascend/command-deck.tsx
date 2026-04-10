@@ -1,10 +1,11 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { type ReactNode, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
+  ChevronDown,
   ChevronRight,
-  Cloud,
   Plus,
   Play,
   Sparkles,
@@ -22,6 +23,11 @@ import {
   type PathId,
   type SessionLog,
 } from "@/lib/ascend-data";
+import {
+  type MomentumSummary,
+  type PathMissionSummary,
+  type TodayRecommendation,
+} from "@/lib/ascend-engine";
 import { cn } from "@/lib/utils";
 
 type PathSignal = {
@@ -38,6 +44,8 @@ type CommandDeckProps = {
   activeMissionCharge: number;
   activeMissionName: string | null;
   latestSession?: SessionLog;
+  missionSummaries: PathMissionSummary[];
+  momentumSummary: MomentumSummary;
   onAuthEmailChange: (email: string) => void;
   onCreatePath: (name: string, capstones: string) => void;
   onDeletePath: (pathId: string) => void;
@@ -52,6 +60,7 @@ type CommandDeckProps = {
   selectedActivityType: ActivityTypeId;
   selectedPath: PathDefinition;
   setSelectedActivityType: (activityTypeId: ActivityTypeId) => void;
+  todayRecommendations: TodayRecommendation[];
   userEmail: string | null;
   timerRunning: boolean;
 };
@@ -59,17 +68,28 @@ type CommandDeckProps = {
 const QUICK_LOG_MINUTES = [15, 30, 45] as const;
 
 function getOrbitPlacement(index: number, total: number) {
-  if (total <= 1) {
-    return { left: 50, top: 28 };
+  const primarySlots = [
+    { left: 50, top: 18 },
+    { left: 76, top: 34 },
+    { left: 68, top: 68 },
+    { left: 32, top: 68 },
+    { left: 24, top: 34 },
+    { left: 50, top: 82 },
+  ];
+
+  if (index < primarySlots.length) {
+    return primarySlots[index];
   }
 
-  const angle = (-90 + (360 / total) * index) * (Math.PI / 180);
-  const radiusX = total > 6 ? 35 : 31;
-  const radiusY = total > 6 ? 24 : 22;
+  const overflowIndex = index - primarySlots.length;
+  const overflowTotal = Math.max(1, total - primarySlots.length);
+  const angle = (-90 + (360 / overflowTotal) * overflowIndex) * (Math.PI / 180);
+  const radiusX = 39;
+  const radiusY = 28;
 
   return {
     left: 50 + Math.cos(angle) * radiusX,
-    top: 49 + Math.sin(angle) * radiusY,
+    top: 48 + Math.sin(angle) * radiusY,
   };
 }
 
@@ -80,6 +100,8 @@ export function CommandDeck({
   activeMissionCharge,
   activeMissionName,
   latestSession,
+  missionSummaries,
+  momentumSummary,
   onAuthEmailChange,
   onCreatePath,
   onDeletePath,
@@ -94,24 +116,36 @@ export function CommandDeck({
   selectedActivityType,
   selectedPath,
   setSelectedActivityType,
+  todayRecommendations,
   userEmail,
   timerRunning,
 }: CommandDeckProps) {
-  return (
-    <div className="grid gap-6 xl:grid-cols-[0.9fr_1.5fr_0.85fr]">
-      <div className="space-y-4">
-        <Card className="rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(9,14,28,0.94),rgba(5,7,17,0.96))] p-0">
-          <CardContent className="space-y-5 p-5">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-[0.34em] text-cyan-300/70">
-                Selected Tree
-              </p>
-              <h2 className="mt-2 font-heading text-2xl uppercase tracking-[0.12em] text-white">
-                {selectedPath.name}
-              </h2>
-              <p className="mt-2 text-sm text-slate-300">{selectedPath.overview}</p>
-            </div>
+  const [openPanel, setOpenPanel] = useState<"overview" | "actions" | "controls" | "sync">("overview");
 
+  return (
+    <motion.div
+      initial="hidden"
+      animate="visible"
+      variants={{
+        hidden: {},
+        visible: { transition: { staggerChildren: 0.08, delayChildren: 0.04 } },
+      }}
+      className="grid gap-6 xl:grid-cols-[0.72fr_1.55fr_0.72fr]"
+    >
+      <motion.div
+        initial={{ opacity: 0, y: 20, filter: "blur(8px)" }}
+        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        transition={{ duration: 0.45 }}
+        className="space-y-3"
+      >
+        <DrawerCard
+          label="Selected Tree"
+          title={selectedPath.name}
+          open={openPanel === "overview"}
+          onToggle={() => setOpenPanel(openPanel === "overview" ? "actions" : "overview")}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-slate-300">{selectedPath.overview}</p>
             <div className="rounded-3xl border border-cyan-400/15 bg-cyan-400/8 p-4">
               <div className="flex items-center justify-between text-[11px] uppercase tracking-[0.3em] text-cyan-200/80">
                 <span>{activeMissionName ? "Mission bound" : "Draft tree"}</span>
@@ -119,8 +153,8 @@ export function CommandDeck({
               </div>
               <p className="mt-3 text-sm text-slate-200">
                 {activeMissionName
-                  ? `${activeMissionName} is currently bound to this tree. Enter the map when you want to train inside it.`
-                  : "This tree is ready to be shaped. Add capstones or nodes when you want to define the route."}
+                  ? `${activeMissionName} is currently bound to this tree.`
+                  : "This tree is ready to be shaped when you want to define the route."}
               </p>
               <Button
                 className="mt-4 w-full rounded-full bg-white text-slate-950 hover:bg-slate-100"
@@ -136,7 +170,6 @@ export function CommandDeck({
                 />
               </div>
             </div>
-
             <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
               <div className="flex items-center justify-between text-xs uppercase tracking-[0.22em] text-slate-400">
                 <span>Path signal</span>
@@ -155,52 +188,6 @@ export function CommandDeck({
                 ))}
               </div>
             </div>
-
-            <div className="space-y-3">
-              <div className="font-mono text-xs uppercase tracking-[0.34em] text-cyan-300/70">
-                Quick Actions
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {ACTIVITY_TYPES.slice(0, 4).map((activity) => (
-                  <button
-                    key={activity.id}
-                    type="button"
-                    onClick={() => setSelectedActivityType(activity.id)}
-                    className={cn(
-                      "rounded-2xl border px-3 py-2 text-left text-xs uppercase tracking-[0.18em] transition-colors",
-                      selectedActivityType === activity.id
-                        ? "border-cyan-300/60 bg-cyan-400/10 text-white"
-                        : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20"
-                    )}
-                  >
-                    {activity.label}
-                  </button>
-                ))}
-              </div>
-              <Button
-                className="w-full rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200"
-                onClick={onStartTimer}
-                disabled={!activeMissionName || timerRunning}
-              >
-                <Play className="size-4" />
-                {timerRunning ? "Timer live" : "Start timer"}
-              </Button>
-              <div className="grid grid-cols-3 gap-2">
-                {QUICK_LOG_MINUTES.map((minutes) => (
-                  <Button
-                    key={minutes}
-                    variant="outline"
-                    className="rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10"
-                    onClick={() => onQuickLog(minutes, selectedActivityType)}
-                    disabled={!activeMissionName}
-                  >
-                    <Zap className="size-4" />
-                    {minutes}m
-                  </Button>
-                ))}
-              </div>
-            </div>
-
             <div className="rounded-3xl border border-fuchsia-400/15 bg-fuchsia-500/8 p-4">
               <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.34em] text-fuchsia-200/80">
                 <Activity className="size-4" />
@@ -208,15 +195,75 @@ export function CommandDeck({
               </div>
               <p className="mt-3 text-sm text-slate-200">
                 {latestSession
-                  ? `${latestSession.nodeName} logged for ${latestSession.minutes}m as ${latestSession.activityLabel}.`
+                  ? `${latestSession.nodeTitle} logged for ${latestSession.minutes}m as ${latestSession.activityLabel}.`
                   : "Select a node and start feeding the tree with real sessions."}
               </p>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+            <div className="grid grid-cols-2 gap-3">
+              <TelemetryTile label="Today" value={momentumSummary.activeToday ? "Active" : "Quiet"} />
+              <TelemetryTile label="7-day momentum" value={`${momentumSummary.recentDaysActive} days`} />
+              <TelemetryTile label="Recent transmissions" value={`${momentumSummary.recentTransmissions}`} />
+              <TelemetryTile label="Weekly completions" value={`${momentumSummary.weeklyCompletions}`} />
+            </div>
+          </div>
+        </DrawerCard>
 
-      <div className="space-y-4">
+        <DrawerCard
+          label="Quick Actions"
+          title="Launch Session"
+          open={openPanel === "actions"}
+          onToggle={() => setOpenPanel(openPanel === "actions" ? "overview" : "actions")}
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-2">
+              {ACTIVITY_TYPES.slice(0, 4).map((activity) => (
+                <button
+                  key={activity.id}
+                  type="button"
+                  onClick={() => setSelectedActivityType(activity.id)}
+                  className={cn(
+                    "rounded-2xl border px-3 py-2 text-left text-xs uppercase tracking-[0.18em] transition-colors",
+                    selectedActivityType === activity.id
+                      ? "border-cyan-300/60 bg-cyan-400/10 text-white"
+                      : "border-white/10 bg-white/5 text-slate-300 hover:border-white/20"
+                  )}
+                >
+                  {activity.label}
+                </button>
+              ))}
+            </div>
+            <Button
+              className="w-full rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200"
+              onClick={onStartTimer}
+              disabled={!activeMissionName || timerRunning}
+            >
+              <Play className="size-4" />
+              {timerRunning ? "Timer live" : "Start timer"}
+            </Button>
+            <div className="grid grid-cols-3 gap-2">
+              {QUICK_LOG_MINUTES.map((minutes) => (
+                <Button
+                  key={minutes}
+                  variant="outline"
+                  className="rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10"
+                  onClick={() => onQuickLog(minutes, selectedActivityType)}
+                  disabled={!activeMissionName}
+                >
+                  <Zap className="size-4" />
+                  {minutes}m
+                </Button>
+              ))}
+            </div>
+          </div>
+        </DrawerCard>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20, filter: "blur(8px)" }}
+        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        transition={{ duration: 0.45, delay: 0.04 }}
+        className="space-y-4"
+      >
         <Card className="rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(8,12,26,0.95),rgba(5,7,15,0.98))] p-0 shadow-[0_0_80px_rgba(37,244,238,0.08)]">
           <CardContent className="relative min-h-[540px] overflow-hidden p-5">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(37,244,238,0.08),transparent_44%)]" />
@@ -243,13 +290,16 @@ export function CommandDeck({
                   key={path.id}
                   type="button"
                   onClick={() => onSelectPath(path)}
-                  whileHover={{ scale: 1.04, y: -4 }}
+                  whileHover={{ scale: 1.03, y: -6 }}
+                  initial={{ opacity: 0, scale: 0.92, y: 16 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1], delay: 0.04 * paths.findIndex((item) => item.id === path.id) }}
                   className="absolute -translate-x-1/2 -translate-y-1/2 text-left"
                   style={{ left: `${placement.left}%`, top: `${placement.top}%` }}
                 >
                   <div
                     className={cn(
-                      "flex min-h-[96px] min-w-[144px] max-w-[172px] flex-col justify-between rounded-[30px] border px-4 py-3 shadow-[0_0_30px_rgba(37,244,238,0.08)] backdrop-blur",
+                      "flex min-h-[96px] min-w-[136px] max-w-[164px] flex-col justify-between rounded-[28px] border px-3.5 py-3 shadow-[0_0_30px_rgba(37,244,238,0.08)] backdrop-blur",
                       selected
                         ? "border-cyan-300/50 bg-slate-950/88"
                         : "border-white/10 bg-slate-950/72 hover:border-white/25"
@@ -289,19 +339,63 @@ export function CommandDeck({
             </div>
           </CardContent>
         </Card>
-      </div>
-
-      <div className="space-y-4">
-        <Card className="rounded-[30px] border border-white/10 bg-slate-950/76 p-0">
+        <Card className="rounded-[34px] border border-cyan-400/15 bg-[linear-gradient(180deg,rgba(7,11,22,0.96),rgba(5,7,16,0.94))] p-0">
           <CardContent className="space-y-4 p-5">
-            <div>
-              <p className="font-mono text-xs uppercase tracking-[0.34em] text-cyan-300/70">
-                Tree Controls
-              </p>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="font-mono text-[11px] uppercase tracking-[0.34em] text-cyan-300/70">Today Engine</div>
+                <div className="mt-1 font-heading text-2xl uppercase tracking-[0.1em] text-white">Best current moves</div>
+              </div>
+              <div className="rounded-full border border-cyan-300/15 bg-cyan-300/8 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-200/80">
+                {todayRecommendations.length} surfaced
+              </div>
             </div>
+            <div className="space-y-3">
+              {todayRecommendations.map((recommendation) => (
+                <div key={recommendation.id} className="rounded-[24px] border border-white/10 bg-white/5 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.28em] text-cyan-200/75">{recommendation.pathName}</div>
+                    <div className="rounded-full border border-fuchsia-300/15 bg-fuchsia-400/10 px-2.5 py-1 text-[10px] uppercase tracking-[0.2em] text-fuchsia-100">{recommendation.reasonLabel}</div>
+                  </div>
+                  <div className="mt-2 font-heading text-lg uppercase tracking-[0.08em] text-white">{recommendation.nodeTitle}</div>
+                  <div className="mt-2 text-sm text-slate-200">{recommendation.action}</div>
+                  <div className="mt-2 text-xs text-slate-400">{recommendation.context}</div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
 
+      <motion.div
+        initial={{ opacity: 0, y: 20, filter: "blur(8px)" }}
+        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+        transition={{ duration: 0.45, delay: 0.08 }}
+        className="space-y-3"
+      >
+        <DrawerCard
+          label="Tree Controls"
+          title="Edit Deck"
+          open={openPanel === "controls"}
+          onToggle={() => setOpenPanel(openPanel === "controls" ? "sync" : "controls")}
+        >
+          <div className="space-y-4">
+            <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
+              <div className="font-mono text-[11px] uppercase tracking-[0.3em] text-slate-400">Cross-path missions</div>
+              <div className="mt-3 space-y-3">
+                {missionSummaries.map((mission) => (
+                  <div key={mission.nodeId} className="rounded-2xl border border-white/10 bg-black/20 px-3 py-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs uppercase tracking-[0.22em] text-cyan-200/70">{mission.pathName}</span>
+                      <span className="text-[11px] text-slate-400">{mission.statusLabel}</span>
+                    </div>
+                    <div className="mt-2 font-medium text-white">{mission.nodeTitle}</div>
+                    <div className="mt-1 text-xs text-slate-400">{mission.action}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
             <AddTreeForm onCreatePath={onCreatePath} />
-
             <Button
               variant="outline"
               className="w-full rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10"
@@ -311,15 +405,17 @@ export function CommandDeck({
               <Trash2 className="size-4" />
               Delete selected tree
             </Button>
-          </CardContent>
-        </Card>
+          </div>
+        </DrawerCard>
 
-        <Card className="rounded-[30px] border border-cyan-400/15 bg-cyan-400/8 p-0">
-          <CardContent className="space-y-4 p-5">
-            <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.34em] text-cyan-200/85">
-              <Cloud className="size-4" />
-              Sync
-            </div>
+        <DrawerCard
+          label="Sync"
+          title={authStatus === "synced" ? "Connected" : "Account"}
+          open={openPanel === "sync"}
+          onToggle={() => setOpenPanel(openPanel === "sync" ? "controls" : "sync")}
+          tone="cyan"
+        >
+          <div className="space-y-4">
             <p className="text-sm text-slate-200">
               {authStatus === "synced"
                 ? `Connected as ${userEmail}. Progress syncs across devices.`
@@ -359,10 +455,76 @@ export function CommandDeck({
             )}
 
             {authMessage ? <p className="text-xs text-cyan-200/80">{authMessage}</p> : null}
-          </CardContent>
-        </Card>
-      </div>
+          </div>
+        </DrawerCard>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function TelemetryTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 px-4 py-3">
+      <div className="text-[10px] uppercase tracking-[0.24em] text-slate-400">{label}</div>
+      <div className="mt-2 font-heading text-lg uppercase tracking-[0.08em] text-white">{value}</div>
     </div>
+  );
+}
+
+function DrawerCard({
+  children,
+  label,
+  title,
+  open,
+  onToggle,
+  tone = "default",
+}: {
+  children: ReactNode;
+  label: string;
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  tone?: "default" | "cyan";
+}) {
+  return (
+    <Card
+      className={cn(
+        "rounded-[30px] border p-0",
+        tone === "cyan"
+          ? "border-cyan-400/15 bg-cyan-400/8"
+          : "border-white/10 bg-[linear-gradient(180deg,rgba(9,14,28,0.94),rgba(5,7,17,0.96))]"
+      )}
+    >
+      <CardContent className="p-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex w-full items-center justify-between rounded-[22px] px-2 py-2 text-left"
+        >
+          <div>
+            <div className="font-mono text-[11px] uppercase tracking-[0.34em] text-cyan-300/70">{label}</div>
+            <div className="mt-1 font-heading text-xl uppercase tracking-[0.1em] text-white">{title}</div>
+          </div>
+          <motion.div animate={{ rotate: open ? 180 : 0 }} transition={{ duration: 0.22 }}>
+            <ChevronDown className="size-5 text-slate-400" />
+          </motion.div>
+        </button>
+
+        <AnimatePresence initial={false}>
+          {open ? (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="space-y-4 px-2 pb-2 pt-1">{children}</div>
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
+      </CardContent>
+    </Card>
   );
 }
 
