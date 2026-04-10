@@ -189,7 +189,7 @@ function normalizeEvidence(evidence: unknown): EvidenceFields | undefined {
         .map((item, index) => ({
           id: String(item.id ?? `attachment-${index}`),
           label: String(item.label ?? "Attachment placeholder"),
-          kind: item.kind === "image" ? "image" : "file",
+          kind: (item.kind === "image" ? "image" : "file") as "image" | "file",
           status: "placeholder" as const,
         }))
     : undefined;
