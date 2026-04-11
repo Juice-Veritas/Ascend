@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bot, Check, Plus, Trash2, WandSparkles, X } from "lucide-react";
 
@@ -42,6 +43,7 @@ const EMPTY_MILESTONE = (): Milestone => ({
 });
 
 export function NodeEditorSheet({ editingNode, isOpen, onClose, onDelete, onSave, tree }: NodeEditorSheetProps) {
+  const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState(0);
   const [title, setTitle] = useState("");
   const [branch, setBranch] = useState("");
@@ -56,6 +58,10 @@ export function NodeEditorSheet({ editingNode, isOpen, onClose, onDelete, onSave
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [suggestions, setSuggestions] = useState<Milestone[]>([]);
   const [aiStatus, setAiStatus] = useState<"idle" | "loading">("idle");
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) {
@@ -93,15 +99,15 @@ export function NodeEditorSheet({ editingNode, isOpen, onClose, onDelete, onSave
     setAiStatus("idle");
   }
 
-  if (!isOpen) {
+  if (!isOpen || !mounted) {
     return null;
   }
 
-  return (
+  return createPortal(
     <AnimatePresence>
-      <motion.div className="fixed inset-0 z-[90] bg-black/55 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
-      <motion.aside initial={{ x: 420 }} animate={{ x: 0 }} exit={{ x: 420 }} transition={{ duration: 0.26 }} className="fixed right-0 top-0 z-[100] h-screen w-full max-w-[460px] overflow-y-auto border-l border-white/10 bg-[linear-gradient(180deg,rgba(7,10,22,0.985),rgba(5,8,18,0.97))] p-5 shadow-[-24px_0_60px_rgba(0,0,0,0.35)]">
-        <div className="space-y-4">
+      <motion.div className="fixed inset-0 z-[190] bg-black/60 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} />
+      <motion.aside initial={{ x: 420 }} animate={{ x: 0 }} exit={{ x: 420 }} transition={{ duration: 0.26 }} className="fixed inset-y-0 right-0 z-[200] h-[100dvh] w-[min(460px,100vw)] overflow-y-auto border-l border-white/10 bg-[linear-gradient(180deg,rgba(7,10,22,0.99),rgba(5,8,18,0.98))] px-5 pb-8 pt-5 shadow-[-24px_0_60px_rgba(0,0,0,0.45)]">
+        <div className="space-y-4 pb-20">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="font-mono text-[11px] uppercase tracking-[0.34em] text-cyan-200/70">{editingNode ? "Edit node" : "New node"}</div>
@@ -198,7 +204,7 @@ export function NodeEditorSheet({ editingNode, isOpen, onClose, onDelete, onSave
             </EditorCard>
           ) : null}
 
-          <div className="flex flex-wrap gap-2">
+          <div className="sticky bottom-0 flex flex-wrap gap-2 rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(7,10,22,0.96),rgba(5,8,18,0.98))] p-3 backdrop-blur">
             <Button className="flex-1 rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200" onClick={() => onSave({ title, branch, description, prerequisiteIds, milestones, nodeType, capstoneGoal: capstoneGoal || undefined, intendedOutcome: intendedOutcome || undefined, demonstrationBypassesMilestones, demonstrationTitle: demonstrationTitle || undefined, demonstrationDescription: demonstrationDescription || undefined })} disabled={!title.trim()}>
               <Check className="size-4" />
               Save node
@@ -207,7 +213,8 @@ export function NodeEditorSheet({ editingNode, isOpen, onClose, onDelete, onSave
           </div>
         </div>
       </motion.aside>
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }
 
