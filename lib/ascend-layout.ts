@@ -90,58 +90,87 @@ export function createStructuredTreeLayout(tree: SkillNode[]) {
     return tree;
   }
 
-  const branchNames = Array.from(
-    new Set(tree.filter((node) => node.nodeType !== "capstone").map((node) => node.branch))
-  );
-  const laneStep = branchNames.length <= 1 ? 0 : 60 / Math.max(1, branchNames.length - 1);
-  const branchCenters = new Map(
-    branchNames.map((branch, index) => [branch, 20 + index * laneStep])
-  );
+  const byId = new Map(tree.map((node) => [node.id, node]));
+  const depthCache = new Map<string, number>();
+  const getDepth = (node: SkillNode): number => {
+    const cached = depthCache.get(node.id);
+    if (cached !== undefined) {
+      return cached;
+    }
 
-  const capstones = tree.filter((node) => node.nodeType === "capstone");
-  const capstoneStep = capstones.length <= 1 ? 0 : 60 / Math.max(1, capstones.length - 1);
+    if (node.nodeType === "foundation" || node.prerequisites.length === 0) {
+      depthCache.set(node.id, 0);
+      return 0;
+    }
 
-  const laidOut = tree.map((node) => {
+    const parentDepth = Math.max(
+      ...node.prerequisites
+        .map((id) => byId.get(id))
+        .filter((value): value is SkillNode => Boolean(value))
+        .map((parent) => getDepth(parent))
+    );
+
+    const nextDepth = parentDepth + 1;
+    depthCache.set(node.id, nextDepth);
+    return nextDepth;
+  };
+
+  const branchNames = Array.from(new Set(tree.filter((node) => node.nodeType !== "capstone").map((node) => node.branch)));
+  const laneStep = branchNames.length <= 1 ? 0 : 64 / Math.max(1, branchNames.length - 1);
+  const branchCenters = new Map(branchNames.map((branch, index) => [branch, 18 + index * laneStep]));
+
+  const skillDepths = tree.filter((node) => node.nodeType === "skill").map((node) => getDepth(node));
+  const maxSkillDepth = Math.max(1, ...skillDepths);
+
+  const groups = new Map<string, SkillNode[]>();
+  for (const node of tree.filter((item) => item.nodeType !== "capstone")) {
+    const level = node.nodeType === "foundation" ? 0 : getDepth(node);
+    const key = `${node.branch}:${level}:${node.nodeType}`;
+    groups.set(key, [...(groups.get(key) ?? []), node]);
+  }
+
+  const laidOut = tree.filter((item) => item.nodeType !== "capstone").map((node) => {
     if (node.nodeType === "capstone") {
-      const capstoneIndex = capstones.findIndex((item) => item.id === node.id);
-      return {
-        ...node,
-        position: normalizeNodePosition(
-          {
-            x: 20 + capstoneIndex * capstoneStep,
-            y: 18,
-          },
-          node.nodeType
-        ),
-      };
+      return node;
     }
 
-    const branchX = branchCenters.get(node.branch) ?? 50;
-    const fallbackY = node.nodeType === "foundation" ? 70 : 48;
+    const level = node.nodeType === "foundation" ? 0 : getDepth(node);
+    const siblings = groups.get(`${node.branch}:${level}:${node.nodeType}`) ?? [node];
+    const siblingIndex = siblings.findIndex((item) => item.id === node.id);
+    const siblingOffset = (siblingIndex - (siblings.length - 1) / 2) * 7;
+    const branchCenter = branchCenters.get(node.branch) ?? 50;
+    const parents = node.prerequisites.map((id) => byId.get(id)).filter((value): value is SkillNode => Boolean(value));
+    const parentAverageX = parents.length > 0 ? parents.reduce((sum, parent) => sum + parent.position.x, 0) / parents.length : branchCenter;
 
-    if (node.prerequisites.length > 0) {
-      const parents = tree.filter((item) => node.prerequisites.includes(item.id));
-      const averageParentX =
-        parents.length > 0
-          ? parents.reduce((sum, item) => sum + item.position.x, 0) / parents.length
-          : branchX;
-
-      return {
-        ...node,
-        position: normalizeNodePosition(
-          {
-            x: Math.round((averageParentX + branchX) / 2),
-            y: fallbackY,
-          },
-          node.nodeType
-        ),
-      };
-    }
+    const baseX = node.nodeType === "foundation" ? branchCenter : Math.round((branchCenter * 0.6 + parentAverageX * 0.4));
+    const skillY = maxSkillDepth <= 1 ? 48 : 58 - ((level - 1) / Math.max(1, maxSkillDepth - 1)) * 18;
 
     return {
       ...node,
-      position: normalizeNodePosition({ x: branchX, y: fallbackY }, node.nodeType),
+      position: normalizeNodePosition(
+        {
+          x: baseX + siblingOffset,
+          y: node.nodeType === "foundation" ? 72 : skillY,
+        },
+        node.nodeType
+      ),
     };
+  });
+
+  const capstones = tree
+    .filter((node) => node.nodeType === "capstone")
+    .map((node) => {
+      const parents = node.prerequisites.map((id) => byId.get(id)).filter((value): value is SkillNode => Boolean(value));
+      const averageParentX = parents.length > 0 ? parents.reduce((sum, parent) => sum + parent.position.x, 0) / parents.length : 50;
+      return { node, averageParentX };
+    })
+    .sort((a, b) => a.averageParentX - b.averageParentX);
+
+  capstones.forEach(({ node, averageParentX }, index) => {
+    const fallbackStep = capstones.length <= 1 ? 0 : 62 / Math.max(1, capstones.length - 1);
+    const fallbackX = 19 + index * fallbackStep;
+    const nextPosition = normalizeNodePosition({ x: averageParentX || fallbackX, y: 16 }, node.nodeType);
+    laidOut.push({ ...node, position: nextPosition });
   });
 
   return laidOut.map((node) => ({

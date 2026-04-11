@@ -5,8 +5,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { type Session } from "@supabase/supabase-js";
 
-import { CommandDeck } from "@/components/ascend/command-deck";
-import { SkillTreeScreen } from "@/components/ascend/skill-tree-screen";
+import { CommandDeckCompact } from "@/components/ascend/command-deck-compact";
+import { SkillTreeScreenRefined } from "@/components/ascend/skill-tree-screen-refined";
 import {
   DEFAULT_CATALOG,
   type ActivityTypeId,
@@ -219,6 +219,11 @@ export function AscendApp() {
     setActiveMissionId((catalog.skillTrees[path.id] ?? [])[0]?.id ?? "");
   }
 
+  function enterPath(path: PathDefinition) {
+    selectPath(path);
+    setScreen("tree");
+  }
+
   function registerSession(minutes: number, activityTypeId: ActivityTypeId, note?: string) {
     if (!activeMission) {
       return;
@@ -379,30 +384,30 @@ export function AscendApp() {
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(104,129,255,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(104,129,255,0.08)_1px,transparent_1px)] bg-[size:72px_72px] opacity-30" />
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,rgba(4,5,10,0.12)_52%,rgba(4,5,10,0.82)_100%)]" />
       <div className="relative mx-auto flex min-h-screen w-full max-w-[1600px] flex-col px-4 py-5 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-4 border-b border-white/10 pb-6 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-2">
+        <header className="flex flex-col gap-4 border-b border-white/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+          <div className="space-y-1.5">
             <p className="font-mono text-xs uppercase tracking-[0.45em] text-cyan-300/80">Ascend</p>
             <h1 className="max-w-3xl font-heading text-3xl uppercase tracking-[0.14em] text-white sm:text-4xl">{screen === "paths" ? "Command Deck" : "Mastery Map"}</h1>
-            <p className="max-w-2xl text-sm text-slate-300 sm:text-base">{screen === "paths" ? "Choose a path, preview it, and enter when you are ready to work." : `${selectedPath.name} organized around milestones, demonstrations, and the next meaningful step.`}</p>
+            <p className="max-w-2xl text-sm text-slate-400 sm:text-base">{screen === "paths" ? "Fast entry. Low drag." : `${selectedPath.name}. One node at a time.`}</p>
           </div>
           <div className="rounded-3xl border border-cyan-400/20 bg-slate-950/60 px-4 py-3 shadow-[0_0_45px_rgba(37,244,238,0.08)] backdrop-blur">
-            <div className="text-[11px] uppercase tracking-[0.35em] text-cyan-300/80">Current Signal</div>
-            <div className="mt-2 flex items-end gap-3"><div className="font-heading text-2xl uppercase tracking-[0.12em] text-white">{selectedPath.name}</div><div className="pb-1 text-sm text-slate-300">{pathSignals[selectedPath.id]?.completionText ?? "Blueprint forming"}</div></div>
+            <div className="text-[11px] uppercase tracking-[0.35em] text-cyan-300/80">Current</div>
+            <div className="mt-2 flex items-end gap-3"><div className="font-heading text-2xl uppercase tracking-[0.12em] text-white">{selectedPath.name}</div><div className="pb-1 text-sm text-slate-300">{pathSignals[selectedPath.id]?.completionText ?? "Blueprint"}</div></div>
           </div>
         </header>
         <AnimatePresence mode="wait" initial={false}>
           {screen === "paths" ? (
             <motion.section key="paths" initial={{ opacity: 0, y: 24, clipPath: "inset(0 0 12% 0 round 36px)" }} animate={{ opacity: 1, y: 0, clipPath: "inset(0 0 0% 0 round 36px)" }} exit={{ opacity: 0, y: -18, clipPath: "inset(0 0 8% 0 round 36px)" }} transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }} className="flex-1 py-6">
-              <CommandDeck authEmail={authEmail} authMessage={authMessage} authStatus={authStatus} activeMissionCharge={activeMissionCharge} activeMissionName={activeMission?.title ?? null} latestSession={latestSession} missionSummaries={missionSummaries} momentumSummary={momentumSummary} onAuthEmailChange={setAuthEmail} onCreatePath={handleCreatePath} onDeletePath={handleDeletePath} onOpenPath={() => setScreen("tree")} onQuickLog={registerSession} onSelectPath={selectPath} onSendMagicLink={handleSendMagicLink} onSignOut={handleSignOut} onStartTimer={() => activeMission && setTimerRunning(true)} paths={catalog.paths} pathSignals={pathSignals} selectedActivityType={selectedActivityType} selectedPath={selectedPath} setSelectedActivityType={setSelectedActivityType} todayRecommendations={todayRecommendations} userEmail={session?.user.email ?? null} timerRunning={timerRunning} />
+              <CommandDeckCompact authEmail={authEmail} authMessage={authMessage} authStatus={authStatus} activeMissionCharge={activeMissionCharge} activeMissionName={activeMission?.title ?? null} latestSession={latestSession} missionSummaries={missionSummaries} momentumSummary={momentumSummary} onAuthEmailChange={setAuthEmail} onCreatePath={handleCreatePath} onDeletePath={handleDeletePath} onEnterPath={enterPath} onQuickLog={registerSession} onSendMagicLink={handleSendMagicLink} onSignOut={handleSignOut} onStartTimer={() => activeMission && setTimerRunning(true)} paths={catalog.paths} pathSignals={pathSignals} selectedActivityType={selectedActivityType} selectedPath={selectedPath} setSelectedActivityType={setSelectedActivityType} todayRecommendations={todayRecommendations} userEmail={session?.user.email ?? null} timerRunning={timerRunning} />
             </motion.section>
           ) : (
             <motion.section key="tree" initial={{ opacity: 0, y: 24, clipPath: "inset(0 0 12% 0 round 36px)" }} animate={{ opacity: 1, y: 0, clipPath: "inset(0 0 0% 0 round 36px)" }} exit={{ opacity: 0, y: -18, clipPath: "inset(0 0 8% 0 round 36px)" }} transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }} className="flex-1 py-6">
-              <SkillTreeScreen activeMissionId={activeMissionId} elapsedSeconds={elapsedSeconds} onAddNode={handleAddNode} onBack={() => setScreen("paths")} onCommitTimerSession={(note) => registerSession(Math.max(1, Math.round(elapsedSeconds / 60)), selectedActivityType, note)} onDeleteNode={handleDeleteNode} onMoveNode={handleMoveNode} onQuickLog={registerSession} onResetTimer={() => { setTimerRunning(false); setElapsedSeconds(0); }} onSelectMission={setActiveMissionId} onTidyTree={handleTidyTree} onToggleTimer={() => activeMission && setTimerRunning((current) => !current)} onUpdateNode={handleUpdateNode} selectedActivityType={selectedActivityType} selectedPath={selectedPath} sessionFeed={sessionFeed} setSelectedActivityType={setSelectedActivityType} timerRunning={timerRunning} tree={tree} />
+              <SkillTreeScreenRefined activeMissionId={activeMissionId} elapsedSeconds={elapsedSeconds} onAddNode={handleAddNode} onBack={() => setScreen("paths")} onCommitTimerSession={(note) => registerSession(Math.max(1, Math.round(elapsedSeconds / 60)), selectedActivityType, note)} onDeleteNode={handleDeleteNode} onMoveNode={handleMoveNode} onQuickLog={registerSession} onResetTimer={() => { setTimerRunning(false); setElapsedSeconds(0); }} onSelectMission={setActiveMissionId} onTidyTree={handleTidyTree} onToggleTimer={() => activeMission && setTimerRunning((current) => !current)} onUpdateNode={handleUpdateNode} selectedActivityType={selectedActivityType} selectedPath={selectedPath} sessionFeed={sessionFeed} setSelectedActivityType={setSelectedActivityType} timerRunning={timerRunning} tree={tree} />
             </motion.section>
           )}
         </AnimatePresence>
         <AnimatePresence>{sessionFeedback ? <motion.div key={sessionFeedback.id} initial={{ opacity: 0, y: 18, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: -10, scale: 0.98 }} transition={{ duration: 0.32, ease: "easeOut" }} className="pointer-events-none absolute right-4 top-24 z-20 max-w-sm rounded-[28px] border border-cyan-300/35 bg-[linear-gradient(180deg,rgba(11,17,34,0.95),rgba(7,11,21,0.92))] px-5 py-4 shadow-[0_0_45px_rgba(37,244,238,0.18)] backdrop-blur sm:right-6"><div className="font-mono text-[11px] uppercase tracking-[0.34em] text-cyan-300/80">{sessionFeedback.visibleLabel}</div><div className="mt-2 font-heading text-2xl uppercase tracking-[0.12em] text-white">{sessionFeedback.nodeTitle}</div><div className="mt-2 text-sm text-slate-300">{sessionFeedback.minutes}m logged as <span className="text-cyan-300">{sessionFeedback.activityLabel}</span>. {sessionFeedback.feedback}</div></motion.div> : null}</AnimatePresence>
-        <footer className="border-t border-white/10 py-4 text-xs uppercase tracking-[0.24em] text-slate-400">Active mission status: <span className="text-cyan-300">{activeMission ? getVisibleProgressLabel(activeMission, tree) : "Awaiting selection"}</span> for <span className="text-white">{activeMission?.title ?? "no mission"}</span>.</footer>
+        <footer className="border-t border-white/10 py-4 text-xs uppercase tracking-[0.24em] text-slate-400">Focus: <span className="text-cyan-300">{activeMission ? getVisibleProgressLabel(activeMission, tree) : "Awaiting selection"}</span> on <span className="text-white">{activeMission?.title ?? "no node"}</span>.</footer>
       </div>
     </main>
   );

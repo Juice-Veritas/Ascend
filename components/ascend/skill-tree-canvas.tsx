@@ -13,7 +13,10 @@ import { cn } from "@/lib/utils";
 
 type SkillTreeCanvasProps = {
   activeNodeId: string;
+  connectionSourceId?: string | null;
+  connectionMode?: boolean;
   editMode: boolean;
+  onConnectNode?: (nodeId: string) => void;
   onMoveNode: (nodeId: string, position: { x: number; y: number }) => void;
   onSelectNode: (nodeId: string) => void;
   tree: SkillNode[];
@@ -21,7 +24,10 @@ type SkillTreeCanvasProps = {
 
 export function SkillTreeCanvas({
   activeNodeId,
+  connectionSourceId,
+  connectionMode = false,
   editMode,
+  onConnectNode,
   onMoveNode,
   onSelectNode,
   tree,
@@ -83,6 +89,7 @@ export function SkillTreeCanvas({
         const state = getNodeState(node, tree);
         const charge = getNodeCharge(node);
         const isActive = node.id === activeNodeId;
+        const isConnectionSource = node.id === connectionSourceId;
         const milestoneProgress = getMilestoneProgress(node);
 
         return (
@@ -113,7 +120,13 @@ export function SkillTreeCanvas({
                 y: Math.round(nextY * 10) / 10,
               });
             }}
-            onClick={() => onSelectNode(node.id)}
+            onClick={() => {
+              if (connectionMode && onConnectNode) {
+                onConnectNode(node.id);
+                return;
+              }
+              onSelectNode(node.id);
+            }}
           >
             <motion.div
               animate={
@@ -142,6 +155,7 @@ export function SkillTreeCanvas({
                 state === "mastered" &&
                   "border-fuchsia-300/55 bg-fuchsia-400/12 text-white shadow-[0_0_28px_rgba(254,52,187,0.22)]",
                 isActive && "ring-1 ring-cyan-200/60",
+                isConnectionSource && "ring-2 ring-fuchsia-300/70",
                 node.nodeType === "capstone" && "border-fuchsia-300/35"
               )}
             >
@@ -190,7 +204,7 @@ export function SkillTreeCanvas({
 
       <div className="pointer-events-none absolute inset-x-4 bottom-4 flex flex-wrap justify-center gap-2">
         <div className="rounded-full border border-cyan-300/15 bg-cyan-300/8 px-3 py-1 text-[10px] uppercase tracking-[0.24em] text-cyan-200/75">
-          {editMode ? "Drag nodes to tune the layout" : "Select a node to inspect mastery"}
+          {connectionMode ? "Connect: choose source, then target" : editMode ? "Drag nodes to tune the layout" : "Select a node to inspect mastery"}
         </div>
         {branches.map((branch) => (
           <div
