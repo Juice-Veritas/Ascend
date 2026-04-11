@@ -1,8 +1,8 @@
 import { type NodeType, type SkillNode } from "@/lib/ascend-data";
 
 export const MAP_BOUNDS = {
-  minX: 12,
-  maxX: 88,
+  minX: 16,
+  maxX: 84,
   minY: 12,
   maxY: 82,
 } as const;
@@ -41,6 +41,14 @@ export function normalizeNodePosition(
     x: clamp(snap(position.x), MAP_BOUNDS.minX, MAP_BOUNDS.maxX),
     y: clamp(snap(position.y), band.minY, band.maxY),
   };
+}
+
+export function isNodePositionOutOfBounds(
+  position: { x: number; y: number },
+  nodeType: NodeType
+) {
+  const normalized = normalizeNodePosition(position, nodeType);
+  return normalized.x !== position.x || normalized.y !== position.y;
 }
 
 export function findOpenNodePosition(

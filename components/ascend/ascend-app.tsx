@@ -24,7 +24,7 @@ import {
 } from "@/lib/ascend-catalog-storage";
 import {
   createStructuredTreeLayout,
-  findOpenNodePosition,
+  isNodePositionOutOfBounds,
   normalizeNodePosition,
 } from "@/lib/ascend-layout";
 import {
@@ -214,6 +214,24 @@ export function AscendApp() {
       });
   }, [activeMissionId, catalog, hasHydratedState, hasResolvedRemote, selectedActivityType, selectedPathId, session, sessionFeed]);
 
+  useEffect(() => {
+    const currentTree = catalog.skillTrees[selectedPathId] ?? [];
+    if (!currentTree.some((node) => isNodePositionOutOfBounds(node.position, node.nodeType))) {
+      return;
+    }
+
+    setCatalog((current) => ({
+      ...current,
+      skillTrees: {
+        ...current.skillTrees,
+        [selectedPathId]: (current.skillTrees[selectedPathId] ?? []).map((node) => ({
+          ...node,
+          position: normalizeNodePosition(node.position, node.nodeType),
+        })),
+      },
+    }));
+  }, [catalog.skillTrees, selectedPathId]);
+
   function selectPath(path: PathDefinition) {
     setSelectedPathId(path.id);
     setActiveMissionId((catalog.skillTrees[path.id] ?? [])[0]?.id ?? "");
@@ -334,7 +352,7 @@ export function AscendApp() {
         return current;
       }
 
-      const nextPosition = findOpenNodePosition(normalizeNodePosition(position, movingNode.nodeType), movingNode, currentTree);
+      const nextPosition = normalizeNodePosition(position, movingNode.nodeType);
       return {
         ...current,
         skillTrees: {

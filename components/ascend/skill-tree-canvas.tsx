@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { motion } from "framer-motion";
 
 import { type SkillNode } from "@/lib/ascend-data";
+import { normalizeNodePosition } from "@/lib/ascend-layout";
 import {
   getMilestoneProgress,
   getNodeCharge,
@@ -102,6 +103,7 @@ export function SkillTreeCanvas({
             whileDrag={editMode ? { scale: 1.04, zIndex: 20 } : undefined}
             drag={editMode}
             dragMomentum={false}
+            dragElastic={0}
             onDragEnd={(_event, info) => {
               if (!editMode) {
                 return;
@@ -113,12 +115,17 @@ export function SkillTreeCanvas({
                 return;
               }
 
-              const nextX = Math.max(10, Math.min(90, node.position.x + (info.offset.x / bounds.width) * 100));
-              const nextY = Math.max(14, Math.min(82, node.position.y + (info.offset.y / bounds.height) * 100));
-              onMoveNode(node.id, {
-                x: Math.round(nextX * 10) / 10,
-                y: Math.round(nextY * 10) / 10,
-              });
+              const relativeX = ((info.point.x - bounds.left) / bounds.width) * 100;
+              const relativeY = ((info.point.y - bounds.top) / bounds.height) * 100;
+              const nextPosition = normalizeNodePosition(
+                {
+                  x: relativeX,
+                  y: relativeY,
+                },
+                node.nodeType
+              );
+
+              onMoveNode(node.id, nextPosition);
             }}
             onClick={() => {
               if (connectionMode && onConnectNode) {
