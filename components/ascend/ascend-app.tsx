@@ -24,6 +24,7 @@ import {
 } from "@/lib/ascend-catalog-storage";
 import {
   createStructuredTreeLayout,
+  findOpenNodePosition,
   isNodePositionOutOfBounds,
   normalizeNodePosition,
 } from "@/lib/ascend-layout";
