@@ -7,6 +7,7 @@ import { type Session } from "@supabase/supabase-js";
 
 import { CommandDeckCompact } from "@/components/ascend/command-deck-compact";
 import { SkillTreeScreenRefined } from "@/components/ascend/skill-tree-screen-refined";
+import { type ImportedNodeDraft } from "@/lib/ascend-import";
 import {
   DEFAULT_CATALOG,
   type ActivityTypeId,
@@ -25,7 +26,6 @@ import {
 import {
   createStructuredTreeLayout,
   findOpenNodePosition,
-  isNodePositionOutOfBounds,
   normalizeNodePosition,
 } from "@/lib/ascend-layout";
 import {
@@ -61,6 +61,39 @@ const DEFAULT_MILESTONES = {
   skill: ["Define the standard", "Accumulate meaningful reps", "Capture applied evidence"],
   capstone: ["Clarify the proof", "Run a full attempt", "Review the result"],
 } as const;
+
+function createDefaultMilestones(pathId: PathId, title: string, nodeType: SkillNode["nodeType"]) {
+  return DEFAULT_MILESTONES[nodeType].map((milestoneTitle, index) => ({
+    id: `${pathId}-${Date.now()}-${index}`,
+    title: milestoneTitle,
+    description: `${milestoneTitle} for ${title}.`,
+    progressType: index === 1 ? "numeric" : index === 2 ? "demonstration" : "checkbox",
+    targetValue: index === 1 ? 5 : undefined,
+    currentValue: index === 1 ? 0 : undefined,
+    completed: false,
+  })) satisfies SkillNode["milestones"];
+}
+
+function createImportedMilestones(pathId: PathId, title: string, nodeType: SkillNode["nodeType"], labels: string[]) {
+  if (labels.length === 0) {
+    return createDefaultMilestones(pathId, title, nodeType);
+  }
+
+  return labels.map((label, index) => ({
+    id: `${pathId}-${slugifyForImport(title)}-${index}`,
+    title: label,
+    description: `${label} for ${title}.`,
+    progressType: "checkbox" as const,
+    completed: false,
+  }));
+}
+
+function slugifyForImport(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
 
 export function AscendApp() {
   const [screen, setScreen] = useState<Screen>("paths");
@@ -215,24 +248,6 @@ export function AscendApp() {
       });
   }, [activeMissionId, catalog, hasHydratedState, hasResolvedRemote, selectedActivityType, selectedPathId, session, sessionFeed]);
 
-  useEffect(() => {
-    const currentTree = catalog.skillTrees[selectedPathId] ?? [];
-    if (!currentTree.some((node) => isNodePositionOutOfBounds(node.position, node.nodeType))) {
-      return;
-    }
-
-    setCatalog((current) => ({
-      ...current,
-      skillTrees: {
-        ...current.skillTrees,
-        [selectedPathId]: (current.skillTrees[selectedPathId] ?? []).map((node) => ({
-          ...node,
-          position: normalizeNodePosition(node.position, node.nodeType),
-        })),
-      },
-    }));
-  }, [catalog.skillTrees, selectedPathId]);
-
   function selectPath(path: PathDefinition) {
     setSelectedPathId(path.id);
     setActiveMissionId((catalog.skillTrees[path.id] ?? [])[0]?.id ?? "");
@@ -283,6 +298,7 @@ export function AscendApp() {
     title: string;
     branch: string;
     description: string;
+    quests: string[];
     prerequisiteIds: string[];
     milestones?: SkillNode["milestones"];
     nodeType: SkillNode["nodeType"];
@@ -307,10 +323,11 @@ export function AscendApp() {
       title: values.title,
       branch: values.branch,
       description: values.description,
+      quests: values.quests,
       position: values.nodeType === "capstone" ? { x: capstoneX, y: 18 } : values.nodeType === "foundation" ? { x: branchX, y: 68 } : { x: parent ? parent.position.x : branchX, y: parent ? Math.max(36, parent.position.y - 14) : 48 },
       prerequisites: values.prerequisiteIds,
       nodeType: values.nodeType,
-      milestones: values.milestones ?? DEFAULT_MILESTONES[values.nodeType].map((title, index) => ({ id: `${selectedPathId}-${Date.now()}-${index}`, title, description: `${title} for ${values.title}.`, progressType: index === 1 ? "numeric" : index === 2 ? "demonstration" : "checkbox", targetValue: index === 1 ? 5 : undefined, currentValue: index === 1 ? 0 : undefined, completed: false })),
+      milestones: values.milestones ?? createDefaultMilestones(selectedPathId, values.title, values.nodeType),
       demonstration: {
         title: values.demonstrationTitle || `Demonstrate ${values.title}`,
         description:
@@ -332,6 +349,93 @@ export function AscendApp() {
 
     setCatalog((current) => ({ ...current, skillTrees: { ...current.skillTrees, [selectedPathId]: [...(current.skillTrees[selectedPathId] ?? []), positionedNode] } }));
     setActiveMissionId(positionedNode.id);
+  }
+
+  function handleImportNodes(payload: { nodes: ImportedNodeDraft[]; attachToNodeId?: string; tidyLayout: boolean }) {
+    if (payload.nodes.length === 0) {
+      return;
+    }
+
+    const importSeed = Date.now();
+    const draftIdToNodeId = new Map(payload.nodes.map((node, index) => [node.id, `${selectedPathId}-${importSeed}-${index}`]));
+    setActiveMissionId(draftIdToNodeId.get(payload.nodes[0]?.id ?? "") ?? "");
+
+    setCatalog((current) => {
+      const currentTree = current.skillTrees[selectedPathId] ?? [];
+      const branchNames = Array.from(
+        new Set(
+          currentTree
+            .filter((node) => node.nodeType !== "capstone")
+            .map((node) => node.branch)
+            .concat(payload.nodes.map((node) => node.branch))
+        )
+      );
+      const nextNodes: SkillNode[] = [];
+
+      payload.nodes.forEach((draft, index) => {
+        const laneIndex = Math.max(0, branchNames.indexOf(draft.branch));
+        const laneStep = branchNames.length <= 1 ? 0 : 58 / Math.max(1, branchNames.length - 1);
+        const branchX = Math.round(21 + laneIndex * laneStep);
+        const prerequisiteIds = draft.prerequisiteIds
+          .map((draftId) => draftIdToNodeId.get(draftId))
+          .filter((value): value is string => Boolean(value));
+        if (index === 0 && payload.attachToNodeId) {
+          prerequisiteIds.unshift(payload.attachToNodeId);
+        }
+
+        const parent = [...currentTree, ...nextNodes].find((node) => node.id === prerequisiteIds[0]);
+        const nextNode: SkillNode = {
+          id: draftIdToNodeId.get(draft.id) ?? `${selectedPathId}-${importSeed}-${index}`,
+          pathId: selectedPathId,
+          title: draft.title,
+          branch: draft.branch,
+          description: draft.description || "Imported mastery node.",
+          quests: draft.quests,
+          position:
+            draft.nodeType === "capstone"
+              ? { x: branchX, y: 18 }
+              : draft.nodeType === "foundation"
+                ? { x: branchX, y: 68 }
+                : { x: parent ? parent.position.x : branchX, y: parent ? Math.max(36, parent.position.y - 14) : 48 },
+          prerequisites: Array.from(new Set(prerequisiteIds)),
+          nodeType: draft.nodeType,
+          milestones: createImportedMilestones(selectedPathId, draft.title, draft.nodeType, draft.milestones),
+          demonstration: {
+            title: draft.demonstrationTitle || `Demonstrate ${draft.title}`,
+            description:
+              draft.demonstrationDescription ||
+              draft.intendedOutcome ||
+              draft.capstoneGoal ||
+              `Show that ${draft.title} is real outside the app.`,
+            completed: false,
+          },
+          demonstrationBypassesMilestones: draft.nodeType === "capstone",
+          suggestions: [
+            "Imported from text blueprint.",
+            "Review the suggested links before relying on them.",
+            "Refine wording until the next action is obvious.",
+          ],
+          capstoneGoal: draft.capstoneGoal,
+          intendedOutcome: draft.intendedOutcome,
+        };
+
+        nextNodes.push({
+          ...nextNode,
+          position: findOpenNodePosition(nextNode.position, nextNode, [...currentTree, ...nextNodes]),
+        });
+      });
+
+      const mergedTree = [...currentTree, ...nextNodes];
+      const finalTree = payload.tidyLayout ? createStructuredTreeLayout(mergedTree) : mergedTree;
+
+      return {
+        ...current,
+        skillTrees: {
+          ...current.skillTrees,
+          [selectedPathId]: finalTree,
+        },
+      };
+    });
   }
 
   function handleUpdateNode(updatedNode: SkillNode) {
@@ -421,7 +525,7 @@ export function AscendApp() {
             </motion.section>
           ) : (
             <motion.section key="tree" initial={{ opacity: 0, y: 24, clipPath: "inset(0 0 12% 0 round 36px)" }} animate={{ opacity: 1, y: 0, clipPath: "inset(0 0 0% 0 round 36px)" }} exit={{ opacity: 0, y: -18, clipPath: "inset(0 0 8% 0 round 36px)" }} transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }} className="flex-1 py-6">
-              <SkillTreeScreenRefined activeMissionId={activeMissionId} elapsedSeconds={elapsedSeconds} onAddNode={handleAddNode} onBack={() => setScreen("paths")} onCommitTimerSession={(note) => registerSession(Math.max(1, Math.round(elapsedSeconds / 60)), selectedActivityType, note)} onDeleteNode={handleDeleteNode} onMoveNode={handleMoveNode} onQuickLog={registerSession} onResetTimer={() => { setTimerRunning(false); setElapsedSeconds(0); }} onSelectMission={setActiveMissionId} onTidyTree={handleTidyTree} onToggleTimer={() => activeMission && setTimerRunning((current) => !current)} onUpdateNode={handleUpdateNode} selectedActivityType={selectedActivityType} selectedPath={selectedPath} sessionFeed={sessionFeed} setSelectedActivityType={setSelectedActivityType} timerRunning={timerRunning} tree={tree} />
+              <SkillTreeScreenRefined activeMissionId={activeMissionId} elapsedSeconds={elapsedSeconds} onAddNode={handleAddNode} onBack={() => setScreen("paths")} onCommitTimerSession={(note) => registerSession(Math.max(1, Math.round(elapsedSeconds / 60)), selectedActivityType, note)} onDeleteNode={handleDeleteNode} onImportNodes={handleImportNodes} onMoveNode={handleMoveNode} onQuickLog={registerSession} onResetTimer={() => { setTimerRunning(false); setElapsedSeconds(0); }} onSelectMission={setActiveMissionId} onTidyTree={handleTidyTree} onToggleTimer={() => activeMission && setTimerRunning((current) => !current)} onUpdateNode={handleUpdateNode} selectedActivityType={selectedActivityType} selectedPath={selectedPath} sessionFeed={sessionFeed} setSelectedActivityType={setSelectedActivityType} timerRunning={timerRunning} tree={tree} />
             </motion.section>
           )}
         </AnimatePresence>

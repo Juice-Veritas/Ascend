@@ -69,6 +69,7 @@ export type SkillNode = {
   title: string;
   branch: string;
   description: string;
+  quests?: string[];
   position: { x: number; y: number };
   prerequisites: string[];
   nodeType: NodeType;
@@ -236,6 +237,7 @@ export const ATHLETICS_TREE: SkillNode[] = [
     branch: "Base Layer",
     description:
       "Baseline strength, mobility, and recovery habits that make harder work sustainable.",
+    quests: [],
     position: { x: 50, y: 70 },
     prerequisites: [],
     nodeType: "foundation",
@@ -275,6 +277,7 @@ export const ATHLETICS_TREE: SkillNode[] = [
     branch: "Calisthenics",
     description:
       "Pulling strength and scapular control that build toward powerful, demonstrable upper-body pulling.",
+    quests: [],
     position: { x: 40, y: 48 },
     prerequisites: ["physical-foundation"],
     nodeType: "skill",
@@ -323,6 +326,7 @@ export const ATHLETICS_TREE: SkillNode[] = [
     branch: "Calisthenics",
     description:
       "Single-leg strength, balance, and mobility that support deep squat control and clean leg patterns.",
+    quests: [],
     position: { x: 58, y: 48 },
     prerequisites: ["physical-foundation"],
     nodeType: "skill",

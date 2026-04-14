@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import { Bot, Check, Plus, Trash2, WandSparkles, X } from "lucide-react";
@@ -15,6 +15,7 @@ type NodeEditorValues = {
   title: string;
   branch: string;
   description: string;
+  quests: string[];
   prerequisiteIds: string[];
   milestones: Milestone[];
   nodeType: SkillNode["nodeType"];
@@ -43,45 +44,21 @@ const EMPTY_MILESTONE = (): Milestone => ({
 });
 
 export function NodeEditorSheet({ editingNode, isOpen, onClose, onDelete, onSave, tree }: NodeEditorSheetProps) {
-  const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState(0);
-  const [title, setTitle] = useState("");
-  const [branch, setBranch] = useState("");
-  const [description, setDescription] = useState("");
-  const [nodeType, setNodeType] = useState<SkillNode["nodeType"]>("skill");
-  const [prerequisiteIds, setPrerequisiteIds] = useState<string[]>([]);
-  const [capstoneGoal, setCapstoneGoal] = useState("");
-  const [intendedOutcome, setIntendedOutcome] = useState("");
-  const [demonstrationTitle, setDemonstrationTitle] = useState("");
-  const [demonstrationDescription, setDemonstrationDescription] = useState("");
-  const [demonstrationBypassesMilestones, setDemonstrationBypassesMilestones] = useState(false);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [title, setTitle] = useState(() => editingNode?.title ?? "");
+  const [branch, setBranch] = useState(() => editingNode?.branch ?? "");
+  const [description, setDescription] = useState(() => editingNode?.description ?? "");
+  const [quests, setQuests] = useState(() => (editingNode?.quests ?? []).join("\n"));
+  const [nodeType, setNodeType] = useState<SkillNode["nodeType"]>(() => editingNode?.nodeType ?? "skill");
+  const [prerequisiteIds, setPrerequisiteIds] = useState<string[]>(() => editingNode?.prerequisites ?? []);
+  const [capstoneGoal, setCapstoneGoal] = useState(() => editingNode?.capstoneGoal ?? "");
+  const [intendedOutcome, setIntendedOutcome] = useState(() => editingNode?.intendedOutcome ?? "");
+  const [demonstrationTitle, setDemonstrationTitle] = useState(() => editingNode?.demonstration.title ?? "");
+  const [demonstrationDescription, setDemonstrationDescription] = useState(() => editingNode?.demonstration.description ?? "");
+  const [demonstrationBypassesMilestones, setDemonstrationBypassesMilestones] = useState(() => Boolean(editingNode?.demonstrationBypassesMilestones));
+  const [milestones, setMilestones] = useState<Milestone[]>(() => editingNode?.milestones ?? []);
   const [suggestions, setSuggestions] = useState<Milestone[]>([]);
   const [aiStatus, setAiStatus] = useState<"idle" | "loading">("idle");
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    setStep(0);
-    setTitle(editingNode?.title ?? "");
-    setBranch(editingNode?.branch ?? "");
-    setDescription(editingNode?.description ?? "");
-    setNodeType(editingNode?.nodeType ?? "skill");
-    setPrerequisiteIds(editingNode?.prerequisites ?? []);
-    setCapstoneGoal(editingNode?.capstoneGoal ?? "");
-    setIntendedOutcome(editingNode?.intendedOutcome ?? "");
-    setDemonstrationTitle(editingNode?.demonstration.title ?? "");
-    setDemonstrationDescription(editingNode?.demonstration.description ?? "");
-    setDemonstrationBypassesMilestones(Boolean(editingNode?.demonstrationBypassesMilestones));
-    setMilestones(editingNode?.milestones ?? []);
-    setSuggestions([]);
-  }, [editingNode, isOpen]);
 
   async function generateSuggestions() {
     setAiStatus("loading");
@@ -99,7 +76,7 @@ export function NodeEditorSheet({ editingNode, isOpen, onClose, onDelete, onSave
     setAiStatus("idle");
   }
 
-  if (!isOpen || !mounted) {
+  if (!isOpen) {
     return null;
   }
 
@@ -148,6 +125,7 @@ export function NodeEditorSheet({ editingNode, isOpen, onClose, onDelete, onSave
           {step === 1 ? (
             <EditorCard label="Step 2" title="Context">
               <TextAreaField label="Description" value={description} onChange={setDescription} placeholder="What this node means." />
+              <TextAreaField label="Quests" value={quests} onChange={setQuests} placeholder={"One action per line\nBuild the dashboard shell\nAdd contextual recommendation logic"} />
               <TextAreaField label="Outcome" value={intendedOutcome} onChange={setIntendedOutcome} placeholder="What should become possible?" />
               <TextAreaField label="Capstone" value={capstoneGoal} onChange={setCapstoneGoal} placeholder="Optional bigger goal." />
               <InputField label="Final proof" value={demonstrationTitle} onChange={setDemonstrationTitle} placeholder="Demonstrate the standard" />
@@ -205,7 +183,7 @@ export function NodeEditorSheet({ editingNode, isOpen, onClose, onDelete, onSave
           ) : null}
 
           <div className="sticky bottom-0 flex flex-wrap gap-2 rounded-[24px] border border-white/10 bg-[linear-gradient(180deg,rgba(7,10,22,0.96),rgba(5,8,18,0.98))] p-3 backdrop-blur">
-            <Button className="flex-1 rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200" onClick={() => onSave({ title, branch, description, prerequisiteIds, milestones, nodeType, capstoneGoal: capstoneGoal || undefined, intendedOutcome: intendedOutcome || undefined, demonstrationBypassesMilestones, demonstrationTitle: demonstrationTitle || undefined, demonstrationDescription: demonstrationDescription || undefined })} disabled={!title.trim()}>
+            <Button className="flex-1 rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200" onClick={() => onSave({ title, branch, description, quests: quests.split("\n").map((item) => item.trim()).filter(Boolean), prerequisiteIds, milestones, nodeType, capstoneGoal: capstoneGoal || undefined, intendedOutcome: intendedOutcome || undefined, demonstrationBypassesMilestones, demonstrationTitle: demonstrationTitle || undefined, demonstrationDescription: demonstrationDescription || undefined })} disabled={!title.trim()}>
               <Check className="size-4" />
               Save node
             </Button>

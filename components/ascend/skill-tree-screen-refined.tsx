@@ -1,13 +1,15 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Check, ChevronRight, Link2, Pause, PencilLine, Play, Plus, RotateCcw, Sparkles, WandSparkles } from "lucide-react";
 
 import { NodeEditorSheet } from "@/components/ascend/node-editor-sheet";
+import { NodeImportSheet } from "@/components/ascend/node-import-sheet";
 import { SkillTreeCanvas } from "@/components/ascend/skill-tree-canvas";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { type ImportedNodeDraft } from "@/lib/ascend-import";
 import { ACTIVITY_TYPES, type ActivityTypeId, type DemonstrationRequirement, type EvidenceFields, type Milestone, type PathDefinition, type SessionLog, type SkillNode } from "@/lib/ascend-data";
 import { formatDuration, getMilestoneProgress, getNodeNextAction, getNodeNextActionContext, getNodeState, getVisibleProgressLabel, isMilestoneComplete, updateMilestoneCompletion, updateMilestoneValue } from "@/lib/ascend-engine";
 import { cn } from "@/lib/utils";
@@ -15,10 +17,11 @@ import { cn } from "@/lib/utils";
 type SkillTreeScreenProps = {
   activeMissionId: string;
   elapsedSeconds: number;
-  onAddNode: (values: { title: string; branch: string; description: string; prerequisiteIds: string[]; milestones?: Milestone[]; nodeType: SkillNode["nodeType"]; capstoneGoal?: string; intendedOutcome?: string; demonstrationBypassesMilestones?: boolean; demonstrationTitle?: string; demonstrationDescription?: string; }) => void;
+  onAddNode: (values: { title: string; branch: string; description: string; quests: string[]; prerequisiteIds: string[]; milestones?: Milestone[]; nodeType: SkillNode["nodeType"]; capstoneGoal?: string; intendedOutcome?: string; demonstrationBypassesMilestones?: boolean; demonstrationTitle?: string; demonstrationDescription?: string; }) => void;
   onBack: () => void;
   onCommitTimerSession: (note?: string) => void;
   onDeleteNode: (nodeId: string) => void;
+  onImportNodes: (payload: { nodes: ImportedNodeDraft[]; attachToNodeId?: string; tidyLayout: boolean }) => void;
   onMoveNode: (nodeId: string, position: { x: number; y: number }) => void;
   onQuickLog: (minutes: number, activityTypeId: ActivityTypeId, note?: string) => void;
   onResetTimer: () => void;
@@ -34,23 +37,18 @@ type SkillTreeScreenProps = {
   tree: SkillNode[];
 };
 
-export function SkillTreeScreenRefined({ activeMissionId, elapsedSeconds, onAddNode, onBack, onCommitTimerSession, onDeleteNode, onMoveNode, onQuickLog, onResetTimer, onSelectMission, onTidyTree, onToggleTimer, onUpdateNode, selectedActivityType, selectedPath, sessionFeed, setSelectedActivityType, timerRunning, tree }: SkillTreeScreenProps) {
+export function SkillTreeScreenRefined({ activeMissionId, elapsedSeconds, onAddNode, onBack, onCommitTimerSession, onDeleteNode, onImportNodes, onMoveNode, onQuickLog, onResetTimer, onSelectMission, onTidyTree, onToggleTimer, onUpdateNode, selectedActivityType, selectedPath, sessionFeed, setSelectedActivityType, timerRunning, tree }: SkillTreeScreenProps) {
   const activeMission = tree.find((node) => node.id === activeMissionId) ?? tree[0];
   const nodeSessions = sessionFeed.filter((session) => session.nodeId === activeMission?.id);
   const progress = activeMission ? getMilestoneProgress(activeMission) : null;
   const activeState = activeMission ? getNodeState(activeMission, tree) : "locked";
   const [editorOpen, setEditorOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<SkillNode | null>(null);
   const [connectSourceId, setConnectSourceId] = useState<string | null>(null);
   const [mapEditMode, setMapEditMode] = useState(false);
   const [secondaryOpen, setSecondaryOpen] = useState<"logs" | "details" | null>(null);
   const [sessionNote, setSessionNote] = useState("");
-
-  useEffect(() => {
-    if (!editorOpen) {
-      setEditingNode(null);
-    }
-  }, [editorOpen]);
 
   function updateActiveNode(transform: (node: SkillNode) => SkillNode) {
     if (!activeMission) {
@@ -103,6 +101,7 @@ export function SkillTreeScreenRefined({ activeMissionId, elapsedSeconds, onAddN
           <Button variant="outline" className="rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10" onClick={onTidyTree}><WandSparkles className="size-4" />Tidy</Button>
           <Button variant="outline" className={cn("rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10", mapEditMode && "border-cyan-300/45 bg-cyan-400/10")} onClick={() => setMapEditMode((current) => !current)}><PencilLine className="size-4" />{mapEditMode ? "Arrange on" : "Arrange"}</Button>
           <Button variant="outline" className={cn("rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10", connectSourceId && "border-fuchsia-300/45 bg-fuchsia-400/10")} onClick={() => setConnectSourceId((current) => current ? null : activeMission?.id ?? null)}><Link2 className="size-4" />{connectSourceId ? "Connecting" : "Connect"}</Button>
+          <Button variant="outline" className="rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10" onClick={() => setImportOpen(true)}><Sparkles className="size-4" />Import</Button>
           <Button variant="outline" className="rounded-full border-white/15 bg-white/5 text-white hover:bg-white/10" onClick={() => { setEditingNode(null); setEditorOpen(true); }}><Plus className="size-4" />New</Button>
           <Button className="rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200" onClick={() => { if (!activeMission) { return; } setEditingNode(activeMission); setEditorOpen(true); }} disabled={!activeMission}><PencilLine className="size-4" />Edit</Button>
         </div>
@@ -141,6 +140,30 @@ export function SkillTreeScreenRefined({ activeMissionId, elapsedSeconds, onAddN
                     <div className="mt-2 text-base text-white">{getNodeNextAction(activeMission, tree)}</div>
                     <div className="mt-2 text-sm text-slate-400">{getNodeNextActionContext(activeMission, tree)}</div>
                   </div>
+                </CardContent>
+              </Card>
+
+              <Card className="rounded-[28px] border border-white/10 bg-slate-950/70 p-0">
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="font-mono text-[10px] uppercase tracking-[0.24em] text-slate-400">Quests</div>
+                      <div className="mt-1 font-heading text-lg uppercase tracking-[0.08em] text-white">{activeMission.quests?.length ?? 0} queued</div>
+                    </div>
+                  </div>
+                  {(activeMission.quests ?? []).length > 0 ? (
+                    <div className="space-y-2">
+                      {(activeMission.quests ?? []).map((quest) => (
+                        <div key={quest} className="rounded-[20px] border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+                          {quest}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-[20px] border border-dashed border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-400">
+                      No quests added yet.
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -190,7 +213,8 @@ export function SkillTreeScreenRefined({ activeMissionId, elapsedSeconds, onAddN
         </div>
       </div>
 
-      <NodeEditorSheet editingNode={editingNode} isOpen={editorOpen} onClose={() => setEditorOpen(false)} onDelete={editingNode ? () => { onDeleteNode(editingNode.id); setEditorOpen(false); } : undefined} onSave={(values) => { if (editingNode) { onUpdateNode({ ...editingNode, title: values.title, branch: values.branch || "Custom Branch", description: values.description || "A custom mastery node.", nodeType: values.nodeType, prerequisites: values.prerequisiteIds, milestones: values.milestones.length > 0 ? values.milestones : editingNode.milestones, capstoneGoal: values.capstoneGoal, intendedOutcome: values.intendedOutcome, demonstrationBypassesMilestones: values.demonstrationBypassesMilestones, demonstration: { ...editingNode.demonstration, title: values.demonstrationTitle || editingNode.demonstration.title, description: values.demonstrationDescription || editingNode.demonstration.description } }); } else { onAddNode(values); } setEditorOpen(false); }} tree={tree} />
+      {editorOpen ? <NodeEditorSheet key={editingNode?.id ?? "new-node"} editingNode={editingNode} isOpen={editorOpen} onClose={() => { setEditorOpen(false); setEditingNode(null); }} onDelete={editingNode ? () => { onDeleteNode(editingNode.id); setEditorOpen(false); setEditingNode(null); } : undefined} onSave={(values) => { if (editingNode) { onUpdateNode({ ...editingNode, title: values.title, branch: values.branch || "Custom Branch", description: values.description || "A custom mastery node.", quests: values.quests, nodeType: values.nodeType, prerequisites: values.prerequisiteIds, milestones: values.milestones.length > 0 ? values.milestones : editingNode.milestones, capstoneGoal: values.capstoneGoal, intendedOutcome: values.intendedOutcome, demonstrationBypassesMilestones: values.demonstrationBypassesMilestones, demonstration: { ...editingNode.demonstration, title: values.demonstrationTitle || editingNode.demonstration.title, description: values.demonstrationDescription || editingNode.demonstration.description } }); } else { onAddNode(values); } setEditorOpen(false); setEditingNode(null); }} tree={tree} /> : null}
+      {importOpen ? <NodeImportSheet key={`import-${activeMission?.id ?? "none"}-${selectedPath.id}`} activeNode={activeMission ?? null} defaultBranch={activeMission?.branch ?? selectedPath.name} isOpen={importOpen} onClose={() => setImportOpen(false)} onImport={onImportNodes} /> : null}
     </div>
   );
 }

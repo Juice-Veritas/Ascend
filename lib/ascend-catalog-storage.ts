@@ -7,7 +7,7 @@ import {
   type SkillNode,
   type TreeCatalog,
 } from "@/lib/ascend-data";
-import { createStructuredTreeLayout } from "@/lib/ascend-layout";
+import { createStructuredTreeLayout, normalizeNodePosition } from "@/lib/ascend-layout";
 
 const STORAGE_KEY = "ascend-catalog";
 
@@ -208,6 +208,7 @@ function createNode({
   title,
   branch,
   description,
+  quests,
   position,
   prerequisites,
   nodeType,
@@ -221,6 +222,7 @@ function createNode({
   title: string;
   branch: string;
   description: string;
+  quests?: string[];
   position: { x: number; y: number };
   prerequisites: string[];
   nodeType: NodeType;
@@ -235,6 +237,7 @@ function createNode({
     title,
     branch,
     description,
+    quests: quests ?? [],
     position,
     prerequisites,
     nodeType,
@@ -268,10 +271,11 @@ function normalizeNode(node: Partial<SkillNode> & Record<string, unknown>): Skil
     title,
     branch: String(node.branch ?? "Custom"),
     description: String(node.description ?? ""),
-    position: {
+    quests: Array.isArray(node.quests) ? node.quests.map(String) : [],
+    position: normalizeNodePosition({
       x: typeof node.position?.x === "number" ? node.position.x : 50,
       y: typeof node.position?.y === "number" ? node.position.y : 50,
-    },
+    }, nodeType),
     prerequisites: Array.isArray(node.prerequisites)
       ? node.prerequisites.map(String)
       : Array.isArray(node.requirements)
